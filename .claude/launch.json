@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "cph-fullscale",
+      "name": "cph-pocv4",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8124", "--directory", "full-scale"],
+      "runtimeArgs": ["-m", "http.server", "8124", "--directory", "poc-v4"],
       "port": 8124
     }
   ]

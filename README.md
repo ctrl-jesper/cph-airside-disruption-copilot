@@ -26,15 +26,19 @@ The credibility of the demo rests on being clear about this line.
 
 **Synthetic, labelled as such in the app:** the ML timing layer (hand-set on-block times and uncertainty bands stand in for a model trained on A-CDM data), the live Airhart feed (a ticking clock), the flight schedule (a synthetic AODB snapshot using real CPH carriers and routes), the connection bank, and all cost units and operational parameters.
 
-## The full-scale build
+## The continuous optimizer (POC v4)
 
-The `full-scale/` app is a single self-contained HTML page that extends the core with five capabilities, each governed by a tunable policy constant in a Config tab. Every one defaults to off or neutral, so the verified base solve is unchanged until it is enabled.
+The `poc-v4/` app is a single self-contained HTML page. It begins as the V3 snapshot optimizer (whole-apron MIP, Pareto front, digital twin, tow, uncertainty, value, governance) and extends it into a continuous optimizer that runs over a 48-hour feed. Every V3 capability is governed by a tunable policy constant in a Config tab and defaults to off or neutral, so the verified base solve is unchanged until it is enabled.
 
-- **Tow-to-remote and fleet capacity.** A long-dwell aircraft deboards on its contact stand, is towed to a remote parking position for the parked middle of its dwell, then returns to board, which frees the contact stand for another aircraft. The tow is a binary in the objective with a tow cost, and tug and bus fleet limits raise a soft cost under saturation.
-- **Uncertainty handling.** The conflict buffer can be sized from each flight's arrival-time uncertainty band, visualized as a fuzzy Gantt-bar edge. A Monte Carlo over a few hundred arrival-time draws reports how often the plan stays conflict-free and flags fragile stands.
-- **Bottom-up value.** A live euro figure against the naive first-come-first-served rule an incumbent allocator would run: protected connections, bus trips avoided, contact-stand-hours gained, less tow cost, each at a configurable unit cost labelled an assumption.
-- **Governance view.** An EU AI Act screen that classifies the tool honestly as limited-risk, names the autonomy threshold that would move it to high-risk, and states what binds regardless of tier.
-- **Rolling horizon.** A manual re-optimization step that re-solves from the committed picture with a stability term, so the plan does not thrash when nothing material has changed.
+The V4 continuous layer adds:
+
+- **A 48-hour synthetic feed and time engine.** A deterministic schedule of about 250 arrivals and their linked departures on 18 stands, with diurnal traffic, aircraft rotation chains, and early-turnaround delays that cascade. A clock plays it forward at one simulated minute per real second (0.1x to 10x), and the live picture is derived from the clock.
+- **Continuous rolling-horizon optimization.** As the clock plays, the apron is re-solved at a configurable cadence over a bounded window. Committed aircraft hold their stand and move only when it is lost; tiered stability keeps on-ground aircraft in place; every reassignment is logged with a reason.
+- **Six injectable disruptions.** Stand offline, handler-capacity cut, early or late arrival, departure delay, and longer turnaround, injected at the current feed time, applied as the clock passes them, and recorded as a replayable set.
+- **Continuous trade-off strategy control.** Five strategy presets (protect passengers, handlers, schedule, balanced, adaptive) feed the optimizer's weights, with a minimum-change cadence lock so the trade-off cannot thrash.
+- **A realized cost ledger.** The cost the run actually incurs, accrued minute by minute (delay, remote bus trips, strands, gate changes), never forecast. Run save-and-compare overlays two runs so the optimize-off versus optimize-on gap, the realized value of optimizing, is drawn directly.
+
+This is a proof of concept on synthetic data. The Governance tab states what a production build would add: real A-CDM and AODB data, a trained ML timing model, live Airhart integration with governed write-back, crew as a modelled resource, and calibrated cost units.
 
 ## Governance and EU AI Act
 
@@ -45,23 +49,23 @@ The tool is most likely limited-risk under the EU AI Act, not Annex III high-ris
 Everything is static and offline. Serve any sub-app with a local web server, for example:
 
 ```bash
-python3 -m http.server 8124 --directory full-scale
+python3 -m http.server 8124 --directory poc-v4
 # then open http://localhost:8124
 ```
 
-The full-scale app vendors `glpk.js` locally, so it needs no network access. The deck is a self-contained HTML file at `deck/deck.html`.
+The `poc-v4` app vendors `glpk.js` locally, so it needs no network access. The deck is a self-contained HTML file at `deck/deck.html`.
 
 ## Repository layout
 
 | Path | What it is |
 |---|---|
-| `full-scale/` | The production-vision app: whole-apron MIP, Pareto front, digital twin, tow, uncertainty, value, governance, rolling horizon |
+| `poc-v4/` | The continuous-optimizer app: the V3 snapshot core (whole-apron MIP, Pareto front, digital twin, tow, uncertainty, value, governance) plus the V4 48-hour feed, rolling-horizon optimization, injectable disruptions, strategy control, and realized-cost ledger with run compare |
 | `poc/` | The proof-of-concept prototype, the shape of a Copilot Studio answer |
 | `poc-v2/` | An earlier polished PoC iteration, kept for reference. See `poc-v2/README.md` |
 | `deck/` | The presentation, as a self-contained HTML deck and a PDF |
 | `copilot-studio/` | The Copilot Studio agent configuration, build guide, knowledge pack, and scenario |
 | `Solution Overview and Assumptions.md` | The full technical reference: scope, architecture, real-versus-simulated, assumptions, limitations, standards |
-| `v2_build_notes.md` | The development log: the full-scale build phase by phase, with the decisions and verification behind each |
+| `v2_build_notes.md` | The development log: the V3 and V4 build phase by phase, with the decisions and verification behind each |
 | `synthetic_aodb_*.{csv,json}` | The synthetic AODB snapshot, flights, and stands |
 
 ## Standards referenced

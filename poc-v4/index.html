@@ -430,7 +430,7 @@
     <img class="logo-img" src="assets/img/CPH_Logo_Aeronautic_Primary_Full_RGB.png" alt="CPH">
     <div>
       <h1>Apron Optimizer</h1>
-      <p>Whole-apron re-optimization &middot; Airside Operations &middot; Full-scale vision</p>
+      <p>Continuous apron re-optimization &middot; Airside Operations &middot; POC v4</p>
     </div>
   </div>
   <div class="head-right">
@@ -439,7 +439,7 @@
       <button id="stepBtn" onclick="step(5)">+5 min</button>
     </div>
     <span class="clock"><span class="live"></span><span id="clockText">14:20</span> &middot; CPH local</span>
-    <span class="badge">Synthetic data &middot; Production vision</span>
+    <span class="badge">Synthetic data &middot; Proof of concept</span>
   </div>
 </header>
 
@@ -604,6 +604,19 @@
       </div>
 
       <p class="gov-foot">Current posture in this build: read&#8209;only, advisory, human&#8209;in&#8209;the&#8209;loop. The system never allocates autonomously and never cancels or diverts a flight. Every committed assignment is revalidated continuously and logged in the Event log.</p>
+
+      <div class="gov-card" style="margin-top:18px">
+        <h4>From this proof of concept to a production build</h4>
+        <p>This is a POC on synthetic data: it demonstrates the method (a real MIP solver, a continuous rolling horizon, tiered stability, injectable disruptions, and a realized&#8209;cost ledger) on a representative 48&#8209;hour feed of 18 stands. A production build would add:</p>
+        <ul>
+          <li><b>Real A&#8209;CDM and AODB data</b> in place of the synthetic feed, with live arrival, turnaround, and stand status.</li>
+          <li><b>A trained ML timing model</b> with calibrated uncertainty bands, rather than the seeded prediction bands used here.</li>
+          <li><b>Live Airhart integration</b> for the read picture, and governed, human&#8209;accepted write&#8209;back as a separate, later decision (the high&#8209;risk threshold above).</li>
+          <li><b>Crew and equipment as modelled resources</b>, so a ground&#8209;handler shortage has a real lever rather than only a logged cost.</li>
+          <li><b>Calibrated euro cost units</b> agreed with Finance and Operations, replacing the demonstration assumptions in Config.</li>
+          <li><b>Towing inside the continuous loop</b>, extending the V3 tow model into the rolling optimizer.</li>
+        </ul>
+      </div>
     </section>
 
     <section class="tabpane" id="pane-defs">
