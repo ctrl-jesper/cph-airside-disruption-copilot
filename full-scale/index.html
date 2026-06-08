@@ -299,6 +299,20 @@
   .strat-cad button { background: #f6f8fd; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; color: var(--muted); margin-right: 4px; }
   .strat-cad button.on { background: var(--twilight); color: #fff; border-color: var(--twilight); }
   .strat-lock { font-size: 11.5px; font-weight: 600; color: #a11; background: #fde7e7; padding: 2px 9px; border-radius: 10px; }
+  .rl-strip { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; background: #f6f8fd; border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; margin-bottom: 18px; }
+  .rl-strip .rl-lbl { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .rl-strip .rl-val { font-family: 'CPH Airfield', 'Open Sans', sans-serif; font-size: 22px; color: var(--midnight); font-variant-numeric: tabular-nums; }
+  .rl-strip .rl-hint { font-size: 11px; color: var(--muted); }
+  .vview-seg { display: inline-flex; gap: 4px; margin-bottom: 14px; }
+  .vview-seg button { background: #f6f8fd; border: 1px solid var(--border); border-radius: 7px; padding: 8px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; color: var(--muted); }
+  .vview-seg button.on { background: var(--midnight); color: #fff; border-color: var(--midnight); }
+  .rl-head { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+  .rl-tot { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow); }
+  .rl-tot .lbl { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+  .rl-tot .lbl small { color: var(--twilight); font-weight: 600; }
+  .rl-tot .val { font-family: 'CPH Airfield', 'Open Sans', sans-serif; font-size: 27px; color: var(--midnight); line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .vcases-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 1080px) { .vcases-4 { grid-template-columns: repeat(2, 1fr); } }
   .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .evt:last-child { border-bottom: none; }
   .evt.future { opacity: 0.38; }
@@ -538,8 +552,7 @@
     </section>
 
     <section class="tabpane" id="pane-value">
-      <p class="opt-intro">The same disruption, four ways of running the apron. <b>Base</b> does nothing. <b>A</b> optimizes once on the initial picture. <b>B</b> keeps re-optimizing as the picture changes. <b>C</b> re-optimizes and shifts the trade-off to whichever resource is closest to maxing out. The digital twin scores every policy against the same reality, and the cost of the afternoon is integrated in euros. The gap between the curves is the value of optimizing, of optimizing continuously, and of optimizing adaptively.</p>
-      <button class="btn-primary" id="valueBtn" onclick="runValueCases()">Compute value cases</button>
+      <p class="opt-intro"><b>Realized cost</b> accrues what the 48-hour run actually incurs, minute by minute, as it plays. <b>Four-case projection</b> is the V3 forward model: the same single disruption run four ways and integrated over the afternoon. The two are different lenses on the same question, the value of optimizing.</p>
       <div id="valueUI" style="margin-top:14px"></div>
     </section>
 
@@ -1881,7 +1894,7 @@ const VALUE_CASES = [
   { id: 'B', label: 'B · keep optimizing', color: '#4e55ab' },
   { id: 'C', label: 'C · optimize + adapt', color: '#170d81' },
 ];
-let valueResult = null, valueMode = 'cum', valueMC = null;
+let valueResult = null, valueMode = 'cum', valueMC = null, valueView = 'realized';
 
 async function valueSolve(weights, disrupt) {
   const glpk = await window.__glpkReady;
@@ -1999,10 +2012,23 @@ async function runValueMonteCarlo() {
 }
 
 function setValueMode(m) { valueMode = m; renderValueView(); }
+function setValueView(v) { valueView = v; renderValueView(); }
+
+function valueViewSwitch() {
+  return '<div class="vview-seg">' +
+    '<button class="' + (valueView === 'realized' ? 'on' : '') + '" onclick="setValueView(\'realized\')">Realized cost · 48h run</button>' +
+    '<button class="' + (valueView === 'projection' ? 'on' : '') + '" onclick="setValueView(\'projection\')">Four-case projection</button></div>';
+}
 
 function renderValueView() {
   const el = document.getElementById('valueUI'); if (!el) return;
-  if (!valueResult) { el.innerHTML = '<p class="cap">Click <b>Compute value cases</b> to run the four operating policies against the same disruption and chart their cost over the afternoon.</p>'; return; }
+  if (valueView === 'realized') { el.innerHTML = valueViewSwitch() + renderRealizedHTML(); return; }
+  if (!valueResult) {
+    el.innerHTML = valueViewSwitch() +
+      '<button class="btn-primary" id="valueBtn" onclick="runValueCases()" style="margin-bottom:12px">Compute value cases</button>' +
+      '<p class="cap">The four-case projection runs the four operating policies against the same single disruption and charts their cost over the afternoon. Click to compute.</p>';
+    return;
+  }
   const metric = valueMode;
   const W = 900, H = 360, pl = 64, pb = 44, pt = 16, pr = 132;
   const xs = valueResult[0].curve.xs;
@@ -2036,7 +2062,7 @@ function renderValueView() {
       '<div class="vc-n">' + eur(c.curve.total) + '</div><div class="vc-s">' + sub + '</div></div></div>';
   }).join('');
 
-  el.innerHTML =
+  el.innerHTML = valueViewSwitch() +
     '<div class="value-controls"><div class="vseg"><button class="' + (valueMode === 'cum' ? 'on' : '') + '" onclick="setValueMode(\'cum\')">Cumulative €</button>' +
     '<button class="' + (valueMode === 'rate' ? 'on' : '') + '" onclick="setValueMode(\'rate\')">Cost rate</button></div>' +
     '<button class="btn-ghost" id="valueMcBtn" onclick="runValueMonteCarlo()">' + (valueMC ? 'Re-run Monte Carlo' : 'Add Monte Carlo band') + '</button>' +
@@ -2044,6 +2070,35 @@ function renderValueView() {
     '<div class="gantt-box"><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:380px">' + svg + '</svg></div>' +
     '<div class="vcases">' + cards + '</div>' +
     '<p class="cap">All four policies face the same reality: a stand fault (E30, C26). Case A optimizes once before the fault is known, so the twin catches its plan on failed stands; B and C re-optimize against the current picture, and C shifts weight to the binding resource (' + (valueResult.binding || 'passenger') + '). The twin judges every policy against full reality. Cost drivers (€' + CONFIG.unit.connection + '/connection, €' + VALUE.eurDelayMin + '/delay-minute, €' + CONFIG.unit.busTrip + '/bus, €' + CONFIG.unit.tow + '/tow) are assumptions set in Config.</p>';
+}
+
+// Phase V4.6: the realized-cost sub-view of the Value tab (the 48-hour incurred ledger).
+function renderRealizedHTML() {
+  const events = v4LedgerEvents(), curve = v4LedgerCurve(events), now = v4.now, realized = v4RealizedCost(now);
+  const W = 900, H = 320, pl = 70, pb = 40, pt = 16, pr = 20;
+  const xs = curve.xs, ymax = Math.max(1, curve.total);
+  const sx = t => pl + (t / SIM_HORIZON) * (W - pl - pr);
+  const sy = v => (H - pb) - v / ymax * (H - pb - pt);
+  let svg = '';
+  for (let gy = 0; gy <= 4; gy++) { const v = ymax * gy / 4, y = sy(v); svg += '<line x1="' + pl + '" y1="' + y.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + y.toFixed(1) + '" stroke="#eef2fa"/><text x="' + (pl - 8) + '" y="' + (y + 3).toFixed(1) + '" font-size="10" fill="#6b7299" text-anchor="end">' + eur(v) + '</text>'; }
+  for (let d = 0; d <= 48; d += 6) { const xx = sx(d * 60); svg += '<text x="' + xx.toFixed(1) + '" y="' + (H - pb + 16) + '" font-size="9.5" fill="#6b7299" text-anchor="middle">' + (d < 24 ? 'D1 ' + pad(d) : 'D2 ' + pad(d - 24)) + '</text>'; }
+  const ptsAll = xs.map((t, k) => sx(t).toFixed(1) + ',' + sy(curve.cum[k]).toFixed(1));
+  const nowIdx = xs.findIndex(t => t > now), cut = nowIdx < 0 ? xs.length : nowIdx;
+  const dashed = ptsAll.slice(Math.max(0, cut - 1)).join(' '), solid = ptsAll.slice(0, cut).join(' ');
+  if (dashed) svg += '<polyline points="' + dashed + '" fill="none" stroke="#88a8ed" stroke-width="2" stroke-dasharray="4 3"/>';
+  if (solid) svg += '<polyline points="' + solid + '" fill="none" stroke="#170d81" stroke-width="2.6"/>';
+  const nx = sx(now);
+  svg += '<line x1="' + nx.toFixed(1) + '" y1="' + pt + '" x2="' + nx.toFixed(1) + '" y2="' + (H - pb) + '" stroke="#ffdd66" stroke-width="2"/>';
+  svg += '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/><line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/>';
+  svg += '<text x="16" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 16 ' + (H / 2) + ')">Cumulative incurred cost (€)</text>';
+  const kinds = ['delay', 'bus', 'strand', 'gate'];
+  const breakdown = kinds.map(k => '<div class="vcase"><div><div class="vc-l">' + V4_KIND[k] + '</div><div class="vc-n">' + eur(realized.byKind[k]) + '</div></div></div>').join('');
+  return '<div class="rl-head"><div class="rl-tot"><div class="lbl">Incurred to ' + v4fmt(now) + '</div><div class="val">' + eur(realized.total) + '</div></div>' +
+    '<div class="rl-tot"><div class="lbl">Current-plan full run <small>' + (v4sim.optimize ? 'optimization on' : 'optimization off') + '</small></div><div class="val">' + eur(curve.total) + '</div></div></div>' +
+    '<div class="gantt-box"><h4>Realized cost over the 48-hour run <span class="band">solid = incurred to the clock; dashed = forecast of the current plan; amber = now</span></h4>' +
+    '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:340px">' + svg + '</svg></div>' +
+    '<div class="vcases vcases-4">' + breakdown + '</div>' +
+    '<p class="cap">Incurred only, never forecast: the left figure sums the cost of events at or before the clock. Drivers (assumptions in Config): €' + VALUE.eurDelayMin + '/delay-minute, €' + CONFIG.unit.busTrip + '/remote bus trip, €' + CONFIG.unit.connection + '/connection + €' + VALUE.eurReaccom + '/passenger on a strand, €' + VALUE.eurReaccom + '/passenger on a gate change. With optimization off the realized stand is the planned stand, so a flight on a failed stand strands; with it on the optimizer relocates it, and the gap between the two full-run totals is the realized value of optimizing. Play the feed to accrue cost.</p>';
 }
 
 /* ----------------------- Pareto trade-off front -----------------------
@@ -2921,6 +2976,7 @@ function v4Render() {
     '<div class="strat-box"><h4>Trade-off strategy <span class="band">sets the objective weights the next solve uses; the cadence lock limits how often it can change</span></h4><div id="feedStrategy"></div></div>' +
     '<div class="disrupt-box"><h4>Inject disruptions <span class="band">applied as the clock passes them; the optimizer reacts on the next cadence</span></h4><div id="feedDisrupt"></div></div>' +
     '<div id="feedNow"></div>' +
+    '<div id="feedRealized" class="rl-strip"></div>' +
     '<div id="feedOpt"></div>' +
     '<div class="gantt-box"><h4>48-hour stand occupancy <span class="band">' + ganttSub + ', ' + FEED.filter(f => f.dir === 'arr').length + ' arrivals on 18 stands</span></h4>' +
     '<p class="hint">Each bar is a turnaround on its stand. Deep blue is a flight carrying a propagated early-turnaround delay; an amber outline marks a flight the optimizer reassigned. The amber line is the current feed time.</p>' +
@@ -2972,6 +3028,8 @@ function v4Frame() {
   const onstand = FEED.filter(f => f.dir === 'arr' && flightPhase(f, t) === 'onstand').length;
   const inbound = FEED.filter(f => f.dir === 'arr' && f.predOn >= t && f.predOn < t + 60).length;
   const depSoon = FEED.filter(f => f.dir === 'dep' && f.predOn >= t && f.predOn < t + 60).length;
+  const rl = document.getElementById('feedRealized');
+  if (rl) { const rc = v4RealizedCost(t); rl.innerHTML = '<span class="rl-lbl">Realized cost incurred to ' + v4fmt(t) + '</span><span class="rl-val">' + eur(rc.total) + '</span><span class="rl-hint">' + (v4sim.optimize ? 'optimization on' : 'optimization off') + ' · see the Value tab for the full trace</span>'; }
   now.innerHTML = '<div class="tw-cards">' +
     '<div class="tw-card"><div class="lbl">Feed time</div><div class="val">' + v4fmt(t) + '</div></div>' +
     '<div class="tw-card"><div class="lbl">On stand now</div><div class="val">' + onstand + '</div></div>' +
@@ -3279,6 +3337,47 @@ function v4DisruptPanel() {
       : '<p class="hint">No disruptions injected. Inject one at the current feed time; with continuous optimization on, the optimizer reacts on the next cadence. A stand offline forces a reassignment; a handler capacity cut is logged but cannot be relieved by moving stands.</p>');
 }
 
+/* ===== Phase V4.6: realized (incurred) cost ledger =====
+   The cost that the run actually incurs, accrued event by event in sim-time, driven by the
+   live picture (FEED effective timings, v4sim.assign, v4sim.moves) — not the V3 forward twin.
+   Four drivers: delay minutes, remote bus trips, strands (no feasible stand), and gate-change
+   reaccommodation (a forced move of an on-ground aircraft). Incurred-only: a reading at the
+   clock sums events at or before it. With optimization off the realized stand is the planned
+   stand, so flights on a failed stand strand; with it on, the optimizer relocates them, and
+   the gap between the two totals is the realized value of optimizing continuously. */
+function v4StandOfflineAt(sid, t) {
+  return v4sim.disruptions.some(d => d.type === 'standOffline' && d.target === sid && d.time <= t && t < d.time + d.duration);
+}
+function v4LedgerEvents() {
+  const u = CONFIG.unit, ev = [];
+  FEED.filter(f => f.dir === 'arr').forEach(f => {
+    const t = f.predOn;
+    if ((f.delayMin || 0) > 0) ev.push({ t, eur: f.delayMin * VALUE.eurDelayMin, kind: 'delay', fid: f.id });
+    const sid = v4StandOf(f), s = sid ? STANDS.find(x => x.id === sid) : null;
+    const stranded = !s || v4StandOfflineAt(sid, t) || CODE_NUM[s.code] < CODE_NUM[f.code] || (s.zone !== 'M' && s.zone !== f.zone);
+    if (stranded) ev.push({ t, eur: (f.conPax || 0) * u.connection + (f.pax || 0) * VALUE.eurReaccom, kind: 'strand', fid: f.id });
+    else if (s.type === 'remote') ev.push({ t, eur: u.busTrip, kind: 'bus', fid: f.id });
+  });
+  v4sim.moves.filter(m => m.phase === 'parked' || m.phase === 'boarding').forEach(m => {
+    const f = FEED.find(x => x.id === m.id);
+    ev.push({ t: m.t, eur: (f ? f.pax : 150) * VALUE.eurReaccom, kind: 'gate', fid: m.id });
+  });
+  ev.sort((a, b) => a.t - b.t);
+  return ev;
+}
+function v4LedgerCurve(events) {
+  const step = 15, xs = []; for (let t = 0; t <= SIM_HORIZON; t += step) xs.push(t);
+  let run = 0, i = 0; const cum = [];
+  xs.forEach(t => { while (i < events.length && events[i].t <= t) { run += events[i].eur; i++; } cum.push(run); });
+  return { xs, cum, total: run };
+}
+function v4RealizedCost(t) {
+  const ev = v4LedgerEvents(); let sum = 0; const byKind = { delay: 0, bus: 0, strand: 0, gate: 0 };
+  ev.forEach(e => { if (e.t <= t) { sum += e.eur; byKind[e.kind] += e.eur; } });
+  return { total: sum, byKind };
+}
+const V4_KIND = { delay: 'Delay minutes', bus: 'Remote bus trips', strand: 'Strands / escalations', gate: 'Gate-change reaccommodation' };
+
 const PANE_TITLES = {
   apron: ['Apron picture', 'Live snapshot of every stand and the rolling traffic window'],
   feed: ['48-hour feed', 'The schedule plays forward; the live picture is derived from the clock'],
@@ -3287,7 +3386,7 @@ const PANE_TITLES = {
   pareto: ['Trade-off front', 'Non-dominated strategies, the human chooses which to accept'],
   changes: ['Event log', 'Decisions, strategy changes, and picture changes, continuously revalidated against the live picture'],
   twin: ['Digital twin', 'Project the chosen allocation forward to reveal the cascade'],
-  value: ['Business value over time', 'Four operating policies against the same disruption, cost integrated in euros'],
+  value: ['Business value over time', 'Realized cost incurred over the 48-hour run, with the V3 four-case projection alongside'],
   gov: ['Governance and EU AI Act', 'How the system is classified and what keeps it compliant'],
   defs: ['Definitions', 'The concepts, scores, and units behind the solution'],
   config: ['Config', 'Governed policy constants. A change re-runs the optimization. Defaults reproduce the base scenario'],
@@ -3300,6 +3399,7 @@ function showTab(name) {
   if (t) { document.getElementById('paneTitle').textContent = t[0]; document.getElementById('paneSub').textContent = t[1]; }
   if (name === 'feed') v4Render();
   else if (v4.playing) { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; }
+  if (name === 'value') renderValueView();
 }
 
 render();
