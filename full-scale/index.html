@@ -288,6 +288,17 @@
   .disrupt-btn:hover { background: #ffe9c2; }
   .ds { font-weight: 600; font-size: 11px; padding: 1px 7px; border-radius: 10px; }
   .ds.on { background: #fde7e7; color: #a11; } .ds.wait { background: #eef2fa; color: var(--muted); } .ds.done { background: #e6f3ea; color: #2a7; }
+  .strat-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .strat-box h4 { margin: 0 0 10px; font-size: 13px; color: var(--midnight); }
+  .strat-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .strat-row:last-child { margin-bottom: 0; }
+  .strat-lbl { font-size: 11.5px; color: var(--muted); font-weight: 600; min-width: 132px; }
+  .strat-btn { background: #f6f8fd; border: 1px solid var(--border); color: var(--midnight); border-radius: 7px; padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .strat-btn.on { background: var(--midnight); color: #fff; border-color: var(--midnight); }
+  .strat-btn.lk { opacity: 0.4; cursor: not-allowed; }
+  .strat-cad button { background: #f6f8fd; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; color: var(--muted); margin-right: 4px; }
+  .strat-cad button.on { background: var(--twilight); color: #fff; border-color: var(--twilight); }
+  .strat-lock { font-size: 11.5px; font-weight: 600; color: #a11; background: #fde7e7; padding: 2px 9px; border-radius: 10px; }
   .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .evt:last-child { border-bottom: none; }
   .evt.future { opacity: 0.38; }
@@ -2894,6 +2905,8 @@ function v4Reset() {
   v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; v4.now = 0;
   FEED = generate48hSchedule(); v4sim.oos.clear(); v4sim.handlerCap = {};
   v4sim.disruptions.forEach(d => { d.applied = false; d.cleared = false; });   // re-arm the set so the rerun replays it
+  v4sim.lastStrategyChange = -Infinity; v4._lockShown = undefined;             // clear any stale strategy lock at t=0
+  if (v4sim.strategy !== 'adaptive') v4sim.weights = { ...V4_STRATEGIES[v4sim.strategy].w };
   if (v4sim.optimize) v4InitPlan();
   v4Render();
 }
@@ -2905,13 +2918,14 @@ function v4Render() {
     '<div id="feedControls"></div>' +
     '<div class="opt-toggle"><button class="twin-play ' + (v4sim.optimize ? 'on' : '') + '" onclick="v4ToggleOptimize()">Continuous optimization: ' + (v4sim.optimize ? 'ON' : 'OFF') + '</button>' +
     '<span class="hint">Re-optimize every ' + CONFIG.optCadence + ' min over a ' + (CONFIG.windowMin / 60).toFixed(CONFIG.windowMin % 60 ? 1 : 0) + ' h window; commit ' + CONFIG.commitLead + ' min before on-block. Change these in Config.</span></div>' +
+    '<div class="strat-box"><h4>Trade-off strategy <span class="band">sets the objective weights the next solve uses; the cadence lock limits how often it can change</span></h4><div id="feedStrategy"></div></div>' +
     '<div class="disrupt-box"><h4>Inject disruptions <span class="band">applied as the clock passes them; the optimizer reacts on the next cadence</span></h4><div id="feedDisrupt"></div></div>' +
     '<div id="feedNow"></div>' +
     '<div id="feedOpt"></div>' +
     '<div class="gantt-box"><h4>48-hour stand occupancy <span class="band">' + ganttSub + ', ' + FEED.filter(f => f.dir === 'arr').length + ' arrivals on 18 stands</span></h4>' +
     '<p class="hint">Each bar is a turnaround on its stand. Deep blue is a flight carrying a propagated early-turnaround delay; an amber outline marks a flight the optimizer reassigned. The amber line is the current feed time.</p>' +
     '<div id="feedGantt"></div></div>';
-  v4Controls(); v4OptPanel(); v4DisruptPanel(); v4Gantt(); v4Frame();
+  v4Controls(); v4StrategyBar(); v4OptPanel(); v4DisruptPanel(); v4Gantt(); v4Frame();
 }
 
 function v4Controls() {
@@ -2949,6 +2963,8 @@ function v4Gantt() {
 function v4Frame() {
   const cl = document.querySelector('#feedControls .feed-clock'); if (cl) cl.textContent = v4fmt(v4.now);
   const sc = document.querySelector('#feedControls .feed-scrub'); if (sc && document.activeElement !== sc) sc.value = Math.round(v4.now);
+  const lockNow = v4StrategyLockRemaining();                      // refresh the strategy lock countdown only when it changes
+  if (lockNow !== v4._lockShown) { v4._lockShown = lockNow; v4StrategyBar(); }
   const g = document.getElementById('feedGantt'), nl = document.getElementById('feedNowLine');
   if (g && g._geom && nl) { const nx = g._geom.x0 + v4.now / SIM_HORIZON * g._geom.w; nl.setAttribute('x1', nx.toFixed(1)); nl.setAttribute('x2', nx.toFixed(1)); }
   const now = document.getElementById('feedNow'); if (!now) return;
@@ -2974,7 +2990,8 @@ function v4Frame() {
    unserviceable. Every move is logged with a reason. The whole run is deterministic in
    sim-time, so playback speed does not change the trace. */
 const V4_STAB = { inbound: 6, parked: 25, boarding: 60 };  // tiered cost of moving an aircraft off its current stand
-const v4sim = { optimize: false, assign: {}, moves: [], lastSolveAt: -1, solving: false, solves: 0, oos: new Set(), cost: 0, disruptions: [], handlerCap: {} };
+const v4sim = { optimize: false, assign: {}, moves: [], lastSolveAt: -1, solving: false, solves: 0, oos: new Set(), cost: 0, disruptions: [], handlerCap: {},
+  strategy: 'balanced', weights: { passenger: 1, handler: 1, schedule: 1 }, cadenceLock: 0, lastStrategyChange: -Infinity };
 
 function v4InitPlan() {
   v4sim.assign = {};
@@ -2995,7 +3012,7 @@ function v4CostFS(f, s) {
   const passenger = (f.pax / 100) * s.walk + (remote ? f.conPax * 0.4 : 0);
   const schedule = (remote ? CONFIG.remotePenalty : 0) + sizeGap * CONFIG.sizeGapPenalty;
   const handler = Math.abs(apronX(s) - HANDLER_BASE[f.handler]) * 1.5;
-  const w = CONFIG.weights;
+  const w = v4sim.weights || CONFIG.weights;
   return w.passenger * passenger + w.handler * handler + w.schedule * schedule;
 }
 function v4ArrPhase(f, t) {
@@ -3083,9 +3100,66 @@ function v4MaybeSolve() {
   const cad = Math.max(1, CONFIG.optCadence);
   const boundary = Math.floor(v4.now / cad) * cad;
   if (boundary > v4sim.lastSolveAt) {
+    if (v4sim.strategy === 'adaptive') v4ApplyAdaptive(boundary);   // re-weight to the binding resource, cadence-limited
     v4sim.lastSolveAt = boundary;
     v4Solve(boundary).then(() => { v4Gantt(); v4OptPanel(); v4Frame(); });
   }
+}
+
+/* ===== Phase V4.5: continuous trade-off strategy control =====
+   A strategy sets the objective weights the next solve uses. Five presets plus an adaptive
+   mode that re-weights to whichever resource is most stressed in the live window. A cadence
+   lock enforces a minimum sim-time dwell between strategy changes (no limit / 30 min / 1 h /
+   2 h), so the trade-off cannot thrash. The adaptive mode respects the same cadence. */
+const V4_STRATEGIES = {
+  balanced:   { label: 'Balanced',          w: { passenger: 1, handler: 1, schedule: 1 } },
+  passengers: { label: 'Protect passengers', w: { passenger: 3, handler: 1, schedule: 1 } },
+  handlers:   { label: 'Protect handlers',   w: { passenger: 1, handler: 3, schedule: 1 } },
+  schedule:   { label: 'Protect schedule',   w: { passenger: 1, handler: 1, schedule: 3 } },
+  adaptive:   { label: 'Adaptive',           w: null },
+};
+const V4_CADENCES = [{ v: 0, label: 'No limit' }, { v: 30, label: '30 min' }, { v: 60, label: '1 h' }, { v: 120, label: '2 h' }];
+function v4StrategyLockRemaining() {
+  if (!v4sim.cadenceLock || v4sim.lastStrategyChange === -Infinity) return 0;
+  return Math.max(0, Math.round(v4sim.lastStrategyChange + v4sim.cadenceLock - v4.now));
+}
+function v4SetStrategy(name) {
+  if (!V4_STRATEGIES[name]) return;
+  if (name !== v4sim.strategy && v4StrategyLockRemaining() > 0) return;   // locked: change refused
+  v4sim.strategy = name;
+  v4sim.lastStrategyChange = v4.now;
+  if (name === 'adaptive') v4ApplyAdaptive(v4.now);
+  else v4sim.weights = { ...V4_STRATEGIES[name].w };
+  if (v4sim.optimize) { v4sim.lastSolveAt = -1; v4MaybeSolve(); }
+  v4Render();
+}
+function v4SetCadence(v) { v4sim.cadenceLock = +v; v4StrategyBar(); }
+// Adaptive: boost the binding resource. Passenger stress = share of windowed flights on remote
+// stands; schedule stress = share carrying delay. The larger drives a 3x weight on that axis.
+function v4ApplyAdaptive(t) {
+  if (v4sim.strategy !== 'adaptive') return;
+  const win = CONFIG.windowMin;
+  const wf = FEED.filter(f => f.dir === 'arr' && f.plannedStand && f.predOn + (f.dwell || 45) > t && f.predOn < t + win);
+  const n = Math.max(1, wf.length);
+  const remoteShare = wf.filter(f => { const s = STANDS.find(x => x.id === v4StandOf(f)); return s && s.type === 'remote'; }).length / n;
+  const delayShare = wf.filter(f => (f.delayMin || 0) > 0).length / n;
+  const binding = remoteShare >= delayShare ? 'passenger' : 'schedule';
+  v4sim.weights = { passenger: 1, handler: 1, schedule: 1 }; v4sim.weights[binding] = 3;
+  v4sim.binding = binding;
+}
+function v4StrategyBar() {
+  const el = document.getElementById('feedStrategy'); if (!el) return;
+  const rem = v4StrategyLockRemaining();
+  const locked = rem > 0;
+  const sbtn = key => '<button class="strat-btn ' + (v4sim.strategy === key ? 'on' : '') +
+    (locked && v4sim.strategy !== key ? ' lk' : '') + '"' + (locked && v4sim.strategy !== key ? ' disabled' : '') +
+    ' onclick="v4SetStrategy(\'' + key + '\')">' + V4_STRATEGIES[key].label + '</button>';
+  const cbtn = c => '<button class="' + (v4sim.cadenceLock === c.v ? 'on' : '') + '" onclick="v4SetCadence(' + c.v + ')">' + c.label + '</button>';
+  const adaptive = v4sim.strategy === 'adaptive' && v4sim.binding ? ' <span class="band">binding: ' + v4sim.binding + '</span>' : '';
+  el.innerHTML =
+    '<div class="strat-row"><span class="strat-lbl">Strategy</span>' + Object.keys(V4_STRATEGIES).map(sbtn).join('') + adaptive + '</div>' +
+    '<div class="strat-row"><span class="strat-lbl">Min change cadence</span><span class="strat-cad">' + V4_CADENCES.map(cbtn).join('') + '</span>' +
+    (locked ? '<span class="strat-lock">locked ' + rem + ' min</span>' : '') + '</div>';
 }
 
 function v4ToggleOptimize() {
