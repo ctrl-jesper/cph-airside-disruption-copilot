@@ -1,0 +1,2767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPH Apron Optimizer (Full Scale)</title>
+<style>
+  @font-face { font-family: 'CPH Airfield'; src: url('assets/fonts/CphAirfield-Positive.otf') format('opentype'); font-weight: 400 900; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-Italic.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-SemiBold.ttf') format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+
+  :root {
+    --midnight: #060e4d; --sunrise: #ffdd66; --sunshine: #fef9d8;
+    --horizon: #dce7f7; --sky: #88a8ed; --twilight: #4e55ab; --evening: #170d81;
+    --black: #171717; --white: #fcfbfa; --misty: #e6e2dc; --storm: #c4bfbb;
+    --bg: #eef2fa; --card: #fcfbfa; --border: #e6e2dc; --ink: #1b2350; --muted: #6b7299;
+    --pill: #eceff7; --shadow: 0 1px 2px rgba(6,14,77,0.06), 0 2px 8px rgba(6,14,77,0.06);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Open Sans', -apple-system, "Segoe UI", Arial, sans-serif; font-size: 15px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+  h1, h2 { font-family: 'CPH Airfield', 'Open Sans', sans-serif; font-weight: 400; letter-spacing: 0.5px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 12px 26px; background: var(--card); border-bottom: 1px solid var(--border); }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .logo-img { height: 44px; width: auto; display: block; }
+  .brand h1 { font-size: 19px; margin: 0; color: var(--midnight); }
+  .brand p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+  .head-right { display: flex; align-items: center; gap: 12px; }
+  .clock { display: flex; align-items: center; gap: 8px; background: var(--horizon); color: var(--midnight); font-weight: 700; padding: 7px 13px; border-radius: 999px; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .clock .live { width: 8px; height: 8px; border-radius: 50%; background: var(--sky); box-shadow: 0 0 0 3px rgba(136,168,237,0.3); }
+  .clock-ctl { display: flex; align-items: center; gap: 6px; }
+  .clock-ctl button { background: var(--card); border: 1px solid var(--border); color: var(--midnight); font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 7px; cursor: pointer; }
+  .clock-ctl button:hover { border-color: var(--twilight); color: var(--twilight); }
+  .clock-ctl button.on { background: var(--sunshine); border-color: var(--sunrise); }
+  .badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); background: var(--pill); padding: 6px 10px; border-radius: 999px; font-weight: 700; }
+
+  .wrap { display: grid; grid-template-columns: 340px 1fr; min-height: calc(100vh - 70px); }
+  .left { background: var(--card); border-right: 1px solid var(--border); padding: 20px; }
+  .right { padding: 22px 26px; }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 4px; font-weight: 700; }
+  .cap { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+
+  .feed-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+  .feed-row .live { width: 8px; height: 8px; border-radius: 50%; background: var(--sky); box-shadow: 0 0 0 3px rgba(136,168,237,0.3); flex: none; }
+  .feed-row b { color: var(--midnight); }
+
+  .disruption { background: var(--sunshine); border: 1px solid var(--sunrise); border-radius: 11px; padding: 13px 14px; margin-bottom: 16px; }
+  .disruption h3 { margin: 0 0 5px; font-size: 13.5px; color: var(--midnight); }
+  .disruption p { margin: 0; font-size: 12.5px; color: var(--ink); }
+  .disruption .issue-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 700; margin: 0 0 9px; }
+  .issue-line { display: flex; gap: 9px; align-items: flex-start; margin-bottom: 9px; }
+  .issue-line:last-of-type { margin-bottom: 0; }
+  .issue-line .idot { width: 8px; height: 8px; border-radius: 50%; background: var(--evening); margin-top: 4px; flex: none; }
+  .issue-line b { display: block; font-size: 13px; color: var(--midnight); }
+  .issue-line .icap { font-size: 11.5px; color: var(--muted); }
+  .redecide-note { margin: 10px 0 0; font-size: 12px; color: var(--evening); font-weight: 600; border-top: 1px solid var(--sunrise); padding-top: 8px; }
+
+  .summary { background: var(--sunshine); border: 1px solid var(--sunrise); border-radius: 11px; padding: 13px 14px; margin-bottom: 16px; }
+  .summary .issue-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 700; margin: 0 0 7px; }
+  .summary p { margin: 0; font-size: 12.5px; color: var(--ink); line-height: 1.55; }
+  .oos-item { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .oos-item:last-child { border-bottom: none; }
+  .oos-item .oos-id { font-weight: 700; color: var(--evening); font-size: 13px; }
+  .oos-item .oos-meta { color: var(--muted); text-align: right; font-size: 11.5px; }
+
+  .countbox { background: var(--horizon); border: 1px solid var(--sky); border-radius: 12px; padding: 14px 16px; margin: 0 0 18px; }
+  .countbox .n { font-family: 'CPH Airfield', 'Open Sans', sans-serif; font-size: 34px; color: var(--evening); line-height: 1; }
+  .countbox .t { font-size: 13px; color: var(--midnight); margin-top: 5px; }
+
+  .gauge { margin-bottom: 12px; }
+  .gauge-head { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }
+  .gauge-head .k { color: var(--midnight); font-weight: 600; } .gauge-head .v { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .gauge-track { height: 8px; background: var(--pill); border-radius: 999px; overflow: hidden; }
+  .gauge-fill { height: 100%; background: var(--sky); border-radius: 999px; }
+  .gauge-fill.warn { background: var(--sunrise); }
+  .gauge-fill.over { background: var(--evening); }
+
+  .titlebar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .titlebar h2 { font-size: 22px; margin: 0; color: var(--midnight); }
+  .titlebar .sub { font-size: 12.5px; color: var(--muted); margin: 3px 0 0; }
+
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab { padding: 11px 18px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  .tab:hover { color: var(--midnight); }
+  .tab.active { color: var(--twilight); border-bottom-color: var(--twilight); }
+  .tab .pill-n { background: var(--evening); color: #fff; font-size: 11px; padding: 1px 8px; border-radius: 999px; margin-left: 7px; font-variant-numeric: tabular-nums; }
+  .tabpane { display: none; } .tabpane.active { display: block; }
+
+  .pier { margin-bottom: 20px; }
+  .pier-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px; }
+  .pier-head h3 { margin: 0; font-size: 14px; color: var(--midnight); }
+  .pier-head .z { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 700; }
+  .stand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+  .stand { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--storm); border-radius: 10px; padding: 11px 13px; box-shadow: var(--shadow); }
+  .stand.occupied { border-left-color: var(--sky); }
+  .stand.free { border-left-color: var(--horizon); }
+  .stand.oos { border-left-color: var(--evening); background: #f3f1fb; }
+  .stand-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .stand-id { font-size: 16px; font-weight: 700; color: var(--midnight); }
+  .stand-code { font-size: 11px; font-weight: 700; color: var(--twilight); background: var(--horizon); padding: 1px 7px; border-radius: 999px; }
+  .stand-meta { font-size: 11.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 7px; }
+  .stand-occ { font-size: 12.5px; border-top: 1px solid var(--border); padding-top: 7px; }
+  .stand-occ .who { font-weight: 700; color: var(--midnight); }
+  .stand-occ.free-txt { color: var(--muted); }
+  .stand-occ.oos-txt { color: var(--evening); font-weight: 700; }
+  .tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 1px 6px; border-radius: 4px; }
+  .tag.remote { background: var(--pill); color: var(--twilight); }
+  .tag.contact { background: var(--horizon); color: var(--twilight); }
+
+  table.data { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+  table.data th, table.data td { text-align: left; padding: 10px 13px; border-bottom: 1px solid var(--border); }
+  table.data th { color: var(--muted); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; background: #f3f5fb; }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr.realloc td { background: var(--sunshine); }
+  table.data b { color: var(--midnight); }
+  .t-old { color: var(--muted); text-decoration: line-through; font-size: 11.5px; margin-right: 5px; }
+  .t-new { font-weight: 700; color: var(--midnight); font-variant-numeric: tabular-nums; }
+  .band { font-size: 11px; color: var(--muted); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 3px 9px; border-radius: 999px; background: var(--pill); color: var(--midnight); white-space: nowrap; }
+  .pill.pos { background: var(--horizon); color: var(--twilight); }
+  .pill.warn { background: var(--sunrise); color: var(--midnight); }
+  .pill.crit { background: var(--evening); color: #fff; }
+  .pill.muted { background: var(--pill); color: var(--muted); }
+  .pill.tow { background: var(--sky); color: var(--midnight); }
+  .tow-note { color: var(--twilight) !important; font-size: 11px; }
+
+  .note { font-size: 12px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+  .note b { color: var(--midnight); }
+
+  .opt-intro { font-size: 13px; color: var(--ink); margin-bottom: 14px; max-width: 760px; }
+  .opt-intro code { background: var(--pill); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .btn-primary { background: var(--midnight); color: #fff; font-family: 'Open Sans', sans-serif; font-size: 14px; font-weight: 600; border: none; border-radius: 8px; padding: 11px 18px; cursor: pointer; }
+  .btn-primary:hover { background: var(--evening); }
+  .btn-primary:disabled { opacity: 0.55; cursor: default; }
+  .solve-meta { display: none; flex-wrap: wrap; gap: 8px 10px; margin: 16px 0 6px; }
+  .solve-meta.show { display: flex; }
+  .chip { font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; }
+  .chip b { color: var(--midnight); font-variant-numeric: tabular-nums; }
+  .chip.ok b { color: var(--twilight); }
+  .chip.warn { background: var(--sunshine); border-color: var(--sunrise); } .chip.warn b { color: var(--evening); }
+
+  .opt-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+  @media (max-width: 1100px) { .opt-panels { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .panel h4 { margin: 0 0 8px; font-size: 13px; color: var(--midnight); }
+  .panel h4 .band { font-weight: 400; }
+  .panel .cap { font-size: 11.5px; color: var(--muted); margin: 8px 0 0; }
+  .robust-score { font-size: 15px; color: var(--midnight); margin: 4px 0 2px; }
+  .robust-score b { font-size: 22px; font-variant-numeric: tabular-nums; }
+  .robust-score.ok b { color: var(--twilight); } .robust-score.mid b { color: var(--evening); } .robust-score.low b { color: var(--evening); }
+  .value-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .value-tbl td { padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .value-tbl .vn { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; padding-right: 12px; }
+  .value-tbl .vv { text-align: right; font-weight: 700; color: var(--twilight); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .value-tbl .vv.neg { color: var(--muted); }
+  .value-tbl .vtot td { border-bottom: none; border-top: 2px solid var(--evening); padding-top: 8px; font-weight: 700; color: var(--midnight); }
+  .value-tbl .vtot .vv { color: var(--evening); font-size: 15px; }
+
+  .value-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .vseg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .vseg button { border: none; background: var(--card); color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 6px 13px; cursor: pointer; }
+  .vseg button.on { background: var(--midnight); color: #fff; }
+  .vcases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+  @media (max-width: 1100px) { .vcases { grid-template-columns: repeat(2, 1fr); } }
+  .vcase { display: flex; gap: 10px; align-items: flex-start; background: var(--card); border: 1px solid var(--border); border-radius: 11px; padding: 12px 13px; box-shadow: var(--shadow); }
+  .vc-dot { width: 11px; height: 11px; border-radius: 3px; margin-top: 4px; flex: 0 0 auto; }
+  .vc-l { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .vc-n { font-size: 19px; font-weight: 700; color: var(--midnight); font-variant-numeric: tabular-nums; }
+  .vc-s { font-size: 11.5px; color: var(--twilight); }
+
+  .gov-banner { display: flex; gap: 16px; align-items: center; background: var(--horizon); border: 1px solid var(--sky); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+  .gov-tier { flex: 0 0 auto; background: var(--midnight); color: #fff; font-weight: 700; font-size: 15px; padding: 10px 16px; border-radius: 10px; letter-spacing: 0.3px; }
+  .gov-tier-x { font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+  .gov-tier-x b { color: var(--midnight); }
+  .gov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 1100px) { .gov-grid { grid-template-columns: 1fr; } }
+  .gov-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .gov-card h4 { margin: 0 0 8px; font-size: 13.5px; color: var(--midnight); }
+  .gov-card p, .gov-card li { font-size: 13px; color: var(--ink); line-height: 1.55; }
+  .gov-card ul { margin: 0; padding-left: 18px; } .gov-card li { margin-bottom: 6px; }
+  .gov-foot { font-size: 12.5px; color: var(--muted); margin-top: 16px; padding: 12px 15px; background: var(--bg); border-radius: 10px; border-left: 3px solid var(--twilight); }
+  .roll-note { background: var(--horizon); border: 1px solid var(--sky); border-radius: 10px; padding: 11px 14px; margin: 14px 0 4px; font-size: 13px; color: var(--midnight); }
+  .cost-cell { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .cost-cell b { color: var(--midnight); }
+  .cost-split { font-size: 11px; color: var(--muted); }
+  td.assigned b { color: var(--midnight); } td.assigned .ac { color: var(--muted); font-size: 11.5px; }
+
+  .pareto-top { display: grid; grid-template-columns: minmax(420px, 560px) 1fr; gap: 22px; align-items: start; margin: 18px 0 6px; }
+  @media (max-width: 1180px) { .pareto-top { grid-template-columns: 1fr; } }
+  .scatter-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .scatter-box h4 { margin: 0 0 2px; font-size: 13px; color: var(--midnight); }
+  .scatter-box .hint { font-size: 11.5px; color: var(--muted); margin: 0 0 6px; line-height: 1.4; }
+  .strat-cards { display: flex; flex-direction: column; gap: 10px; }
+  .strat { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--storm); border-radius: 11px; padding: 12px 14px; cursor: pointer; box-shadow: var(--shadow); }
+  .strat:hover { border-color: var(--twilight); }
+  .strat.sel { box-shadow: 0 0 0 2px var(--sunrise); }
+  .strat.s-pax { border-left-color: var(--sky); }
+  .strat.s-hdl { border-left-color: var(--twilight); }
+  .strat.s-sch { border-left-color: var(--evening); }
+  .strat-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .strat-h b { font-size: 14px; color: var(--midnight); }
+  .strat-h .tag2 { font-size: 10.5px; color: var(--muted); text-align: right; }
+  .strat .sum { font-size: 12px; color: var(--muted); margin: 5px 0 9px; font-variant-numeric: tabular-nums; }
+  .metric { display: grid; grid-template-columns: 70px 1fr 34px; gap: 8px; align-items: center; margin-bottom: 5px; }
+  .metric .ml { font-size: 11px; color: var(--muted); text-transform: capitalize; }
+  .metric .mt { height: 7px; background: var(--pill); border-radius: 999px; overflow: hidden; }
+  .metric .mf { height: 100%; border-radius: 999px; background: var(--sky); }
+  .metric .mf.best { background: var(--twilight); }
+  .metric .mv { font-size: 11px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .sel-head { font-size: 13px; color: var(--midnight); margin: 14px 0 10px; font-weight: 600; }
+  .sel-head .band { font-weight: 400; }
+
+  .defs { max-width: 940px; }
+  .defs > section { margin-bottom: 24px; }
+  .defs h3 { font-size: 15px; color: var(--midnight); margin: 0 0 3px; }
+  .defs .lead { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; line-height: 1.5; max-width: 760px; }
+  .defs dl { margin: 0; display: grid; grid-template-columns: 210px 1fr; gap: 11px 22px; font-size: 13px; }
+  .defs dt { color: var(--midnight); font-weight: 700; }
+  .defs dd { margin: 0; color: var(--ink); line-height: 1.5; }
+  .defs dd .f { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; background: var(--pill); padding: 1px 6px; border-radius: 4px; color: var(--midnight); }
+  .defs .callout { background: var(--sunshine); border: 1px solid var(--sunrise); border-radius: 10px; padding: 12px 15px; font-size: 12.5px; color: var(--ink); margin-top: 14px; line-height: 1.5; max-width: 820px; }
+  .defs .callout b { color: var(--midnight); }
+  .defs .secnote { border-top: 1px solid var(--border); margin-top: 22px; padding-top: 4px; }
+
+  .twin-intro { font-size: 13px; color: var(--ink); margin-bottom: 14px; max-width: 820px; }
+  .twin-controls { display: flex; align-items: center; gap: 14px; margin: 16px 0 8px; flex-wrap: wrap; }
+  .twin-controls input[type=range] { width: 320px; accent-color: var(--twilight); }
+  .twin-clock { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--midnight); background: var(--horizon); padding: 7px 13px; border-radius: 999px; font-size: 14px; }
+  .twin-play { background: var(--midnight); color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .twin-play.on { background: var(--evening); }
+  .twin-strat { font-size: 12.5px; color: var(--muted); }
+  .twin-strat b { color: var(--midnight); }
+  .twin-mode { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .twin-mode button { background: var(--card); border: none; padding: 8px 14px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
+  .twin-mode button:hover { color: var(--twilight); }
+  .twin-mode button.on { background: var(--midnight); color: #fff; }
+  .twin-charts { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 1650px) { .twin-charts { grid-template-columns: 1fr 1fr; } }
+  .sankey-tip { position: fixed; display: none; z-index: 200; max-width: 280px; background: var(--midnight); color: #fff; font-size: 12px; line-height: 1.5; padding: 9px 12px; border-radius: 8px; box-shadow: 0 8px 24px rgba(6,14,77,0.35); pointer-events: none; }
+  .sankey-tip b { color: var(--sunrise); }
+  #sankeySvg path { transition: fill-opacity 0.12s; } #sankeySvg path:hover { fill-opacity: 0.62; }
+  .cf-table th { text-align: center; vertical-align: top; }
+  .cf-table td:not(:first-child) { text-align: center; font-variant-numeric: tabular-nums; }
+  .cf-table .cf-active { background: var(--sunshine); }
+  .cf-table th.cf-active { color: var(--midnight); }
+  .cf-table td.cf-best { font-weight: 700; color: var(--twilight); }
+  .cf-table .cf-syn { font-size: 10px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); }
+  @keyframes flowdash { to { stroke-dashoffset: -32; } }
+  .flow-edge { stroke-dasharray: 9 7; animation: flowdash 0.9s linear infinite; }
+  .flow-edge.hot { animation-duration: 0.45s; }
+  @keyframes flowpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .flow-pulse { animation: flowpulse 1.1s ease-in-out infinite; }
+  .gantt-box, .twin-events { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .gantt-box h4, .twin-events h4 { margin: 0 0 4px; font-size: 13px; color: var(--midnight); }
+  .gantt-box .hint { font-size: 11.5px; color: var(--muted); margin: 0 0 8px; }
+  .tw-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+  @media (max-width: 1080px) { .tw-cards { grid-template-columns: repeat(2, 1fr); } }
+  .tw-card { background: #f6f8fd; border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; }
+  .tw-card .lbl { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+  .tw-card .val { font-size: 23px; font-family: 'CPH Airfield', 'Open Sans', sans-serif; color: var(--midnight); line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tw-card .val small { font-size: 12px; color: var(--muted); font-family: 'Open Sans', sans-serif; }
+  .tw-card .val.warn { color: #8a6d00; } .tw-card .val.crit { color: var(--evening); }
+  .tw-card svg { display: block; margin-top: 5px; }
+  .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .evt:last-child { border-bottom: none; }
+  .evt.future { opacity: 0.38; }
+  .evt .et { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 48px; font-weight: 700; }
+  .evt .ed { color: var(--ink); }
+  .evt-sub { margin-top: 4px; font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+  .evt-chip { display: inline-block; font-size: 11px; font-weight: 700; color: var(--twilight); background: var(--horizon); padding: 0 6px; border-radius: 4px; }
+  .evt .dotc { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: none; }
+  .dotc.conflict { background: var(--evening); } .dotc.handler { background: var(--sunrise); } .dotc.queue { background: var(--sky); } .dotc.conn { background: var(--twilight); }
+
+  .rail-actions { display: flex; gap: 8px; margin: 0 0 18px; }
+  .rail-actions .btn-ghost { flex: 1; }
+  .injector { display: flex; flex-direction: column; gap: 7px; margin-top: 6px; }
+  .injector .btn-ghost { width: 100%; text-align: left; }
+  .injector .btn-ghost.active { background: var(--sunshine); border-color: var(--sunrise); color: var(--midnight); }
+  .injector .reset { color: var(--muted); margin-top: 3px; }
+  .injector .reset:hover { color: var(--twilight); }
+
+  .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .cfg-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .cfg-card h4 { margin: 0 0 2px; font-size: 13.5px; color: var(--midnight); }
+  .cfg-card .cfg-note { margin: 0 0 12px; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+  .cfg-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+  .cfg-row:last-child { margin-bottom: 0; }
+  .cfg-row label { font-size: 12.5px; color: var(--ink); }
+  .cfg-row .cfg-unit { color: var(--muted); font-size: 11px; }
+  .cfg-row input[type=number] { width: 86px; padding: 6px 8px; font-size: 13px; border: 1px solid var(--border); border-radius: 7px; font-family: inherit; text-align: right; color: var(--midnight); font-variant-numeric: tabular-nums; }
+  .cfg-row input[type=number]:focus { outline: none; border-color: var(--twilight); }
+  .cfg-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--twilight); cursor: pointer; }
+  .btn-ghost { background: var(--card); color: var(--midnight); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-ghost:hover { border-color: var(--twilight); color: var(--twilight); }
+  .btn-ghost.active { background: var(--sunshine); border-color: var(--sunrise); color: var(--midnight); }
+
+  .chg-summary { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 16px; }
+  .chg-list { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .chg-row { display: grid; grid-template-columns: 18px 54px 130px 1fr auto; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .chg-row:last-child { border-bottom: none; }
+  .chg-row.clickable { cursor: pointer; }
+  .chg-row.clickable:hover { background: #f6f8fd; }
+  .chg-row .chev { color: var(--storm); font-size: 11px; transition: transform 0.15s ease; }
+  .chg-row.open .chev { transform: rotate(90deg); color: var(--twilight); }
+  .chg-row.open { background: #f6f8fd; }
+  .chg-row .ct { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .chg-row .cr { color: var(--ink); }
+  .chg-row .cr .reason { color: var(--muted); }
+  .chg-row.supersede .cr { color: var(--evening); }
+  .chg-undo { background: var(--card); border: 1px solid var(--border); border-radius: 7px; padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--midnight); }
+  .chg-undo:hover { border-color: var(--twilight); color: var(--twilight); }
+  .act-pill { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  .act-pill.assign { background: var(--horizon); color: var(--twilight); }
+  .act-pill.escalate { background: var(--sunrise); color: var(--midnight); }
+  .act-pill.supersede { background: var(--evening); color: #fff; }
+  .act-pill.undo, .act-pill.restore, .act-pill.inject { background: var(--pill); color: var(--midnight); }
+  .act-pill.accept { background: var(--midnight); color: #fff; }
+
+  .chg-detail { background: #eef2fa; border-bottom: 1px solid var(--border); padding: 14px 18px 16px 84px; }
+  .ctl-head { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .ctl-head b { color: var(--midnight); }
+  .ctl { position: relative; }
+  .ctl::before { content: ''; position: absolute; left: 63px; top: 8px; bottom: 8px; width: 2px; background: var(--border); }
+  .ctl-row { display: grid; grid-template-columns: 50px 16px 1fr; gap: 10px; align-items: baseline; padding: 5px 0; font-size: 12.5px; position: relative; }
+  .ctl-row .ctl-t { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+  .ctl-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; background: var(--sky); box-shadow: 0 0 0 3px #eef2fa; }
+  .ctl-dot.sched { background: var(--storm); } .ctl-dot.pred { background: var(--sky); }
+  .ctl-dot.assign { background: var(--twilight); } .ctl-dot.supersede { background: var(--evening); }
+  .ctl-dot.escalate { background: var(--sunrise); } .ctl-dot.restore, .ctl-dot.undo, .ctl-dot.ack { background: var(--storm); }
+  .ctl-x b { color: var(--midnight); } .ctl-x small { color: var(--muted); margin-left: 6px; }
+  .cf-flight { color: var(--midnight); cursor: pointer; border-bottom: 1px dotted var(--storm); }
+  .cf-flight:hover { color: var(--twilight); border-bottom-color: var(--twilight); }
+
+  .log-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+  .log-filter .lf { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+  .log-filter .lf:hover { border-color: var(--twilight); color: var(--twilight); }
+  .log-filter .lf.on { background: var(--midnight); border-color: var(--midnight); color: #fff; }
+
+  .stale-banner { background: var(--sunshine); border: 1px solid var(--sunrise); border-left: 4px solid var(--evening); border-radius: 10px; padding: 12px 15px; margin: 14px 0 4px; font-size: 13px; color: var(--midnight); font-weight: 600; }
+
+  .act-pill.ack { background: var(--pill); color: var(--midnight); }
+  .row-act { font-size: 11.5px; font-weight: 600; border-radius: 7px; padding: 4px 10px; cursor: pointer; white-space: nowrap; margin-left: 7px;
+    background: var(--sunrise); border: 1px solid var(--sunrise); color: var(--midnight); }
+  .row-act:hover { filter: brightness(0.96); }
+  .row-act.ghost { background: var(--card); border-color: var(--border); color: var(--muted); }
+  .row-act.ghost:hover { border-color: var(--twilight); color: var(--twilight); }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(6,14,77,0.4); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 14px; width: 560px; max-width: 92vw; padding: 24px; box-shadow: 0 20px 60px rgba(6,14,77,0.35); }
+  .modal h3 { margin: 0 0 4px; color: var(--midnight); font-size: 18px; }
+  .modal .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .modal .esc-msg { width: 100%; box-sizing: border-box; min-height: 184px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 13px; font-size: 12.5px; line-height: 1.5; color: var(--ink); margin-bottom: 16px; resize: vertical;
+    font-family: "SF Mono", Menlo, Consolas, monospace; }
+  .modal .esc-msg:focus { outline: none; border-color: var(--twilight); }
+  .modal .actions { display: flex; gap: 10px; justify-content: flex-end; align-items: center; }
+  .modal .mini { font-size: 13px; font-weight: 600; border-radius: 8px; padding: 8px 15px; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--midnight); }
+  .modal .mini:hover { border-color: var(--twilight); }
+  .modal .mini.ghost { color: var(--muted); margin-right: auto; }
+  .modal .mini.primary { background: var(--midnight); border-color: var(--midnight); color: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img class="logo-img" src="assets/img/CPH_Logo_Aeronautic_Primary_Full_RGB.png" alt="CPH">
+    <div>
+      <h1>Apron Optimizer</h1>
+      <p>Whole-apron re-optimization &middot; Airside Operations &middot; Full-scale vision</p>
+    </div>
+  </div>
+  <div class="head-right">
+    <div class="clock-ctl">
+      <button id="playBtn" onclick="togglePlay()">Play feed</button>
+      <button id="stepBtn" onclick="step(5)">+5 min</button>
+    </div>
+    <span class="clock"><span class="live"></span><span id="clockText">14:20</span> &middot; CPH local</span>
+    <span class="badge">Synthetic data &middot; Production vision</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside class="left">
+    <p class="section-title">Live operations feed</p>
+    <div class="feed-row"><span class="live"></span><span id="feedStatus">Airhart AODB &middot; synced <b>now</b></span></div>
+
+    <div class="summary" id="summaryBox"></div>
+
+    <div class="countbox">
+      <div class="n" id="reallocCount">0</div>
+      <div class="t">flights need re-allocation across the apron</div>
+    </div>
+
+    <p class="section-title">Stands out of service</p>
+    <div class="oos-list" id="oosList"></div>
+
+    <p class="section-title" style="margin-top:16px">Stand availability</p>
+    <div class="gauge" id="standGauge"></div>
+
+    <p class="section-title" style="margin-top:16px">Ground handler load</p>
+    <div id="handlerGauges"></div>
+
+    <p class="section-title" style="margin-top:16px">Baggage belt load</p>
+    <div id="beltGauges"></div>
+
+    <p class="section-title" style="margin-top:18px">Inject disruption</p>
+    <p class="cap">Demo controls. Toggle a scenario to inject it into the live picture.</p>
+    <div class="injector">
+      <button class="btn-ghost" id="disrStand" onclick="toggleDisruption('standFaults')">Stand faults &middot; E30, C26</button>
+      <button class="btn-ghost" id="disrHandler" onclick="toggleDisruption('handlerShortage')">Aviator over capacity</button>
+      <button class="btn-ghost" id="disrCrunch" onclick="toggleDisruption('standCrunch')">Wide-body parking crunch</button>
+      <button class="btn-ghost reset" id="resetBtn" onclick="resetLive()">Reset to live</button>
+    </div>
+  </aside>
+
+  <main class="right">
+    <div class="titlebar">
+      <div>
+        <h2 id="paneTitle">Apron picture</h2>
+        <p class="sub" id="paneSub">Live snapshot of every stand and the rolling traffic window</p>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="apron" onclick="showTab('apron')">Apron</div>
+      <div class="tab" data-tab="flights" onclick="showTab('flights')">Flights<span class="pill-n" id="flightTabN">0</span></div>
+      <div class="tab" data-tab="optimize" onclick="showTab('optimize')">Optimize<span class="pill-n" id="optTabN">0</span></div>
+      <div class="tab" data-tab="pareto" onclick="showTab('pareto')">Trade-offs</div>
+      <div class="tab" data-tab="changes" onclick="showTab('changes')">Event log<span class="pill-n" id="changesTabN">0</span></div>
+      <div class="tab" data-tab="twin" onclick="showTab('twin')">Digital twin</div>
+      <div class="tab" data-tab="value" onclick="showTab('value')">Value</div>
+      <div class="tab" data-tab="gov" onclick="showTab('gov')">Governance</div>
+      <div class="tab" data-tab="defs" onclick="showTab('defs')">Definitions</div>
+      <div class="tab" data-tab="config" onclick="showTab('config')">Config</div>
+    </div>
+
+    <section class="tabpane active" id="pane-apron">
+      <div id="apronView"></div>
+      <p class="note"><b>Read-only.</b> This board is the live picture. The Optimize, Trade-offs, and Digital twin tabs all read from exactly this data. The system proposes, a person accepts, and every committed assignment is revalidated continuously against this picture.</p>
+    </section>
+
+    <section class="tabpane" id="pane-flights">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Flight</th><th>Route</th><th>Type / code</th><th>Zone</th>
+            <th>On-block (sched &middot; predicted)</th><th>Handler</th><th>Pax / bags</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="flightRows"></tbody>
+      </table>
+      <p class="note"><b>Predicted times</b> come from the ML timing layer, shown synthetic here, as predicted on-block against schedule with an uncertainty band in minutes. The <b>live feed</b> advances the clock and counts each flight down toward its predicted on-block.</p>
+    </section>
+
+    <section class="tabpane" id="pane-optimize">
+      <p class="opt-intro">The whole apron is re-optimized in one pass as a binary assignment problem, solved by a real mixed-integer solver, <code>glpk.js</code> (GLPK compiled to WebAssembly), running locally in the browser. Each <code>x[flight,stand]</code> is a 0/1 decision. <b>Hard constraints</b> are size code, stand availability, and no two aircraft overlapping in time on one stand. <b>Soft costs</b>, weighted into the objective, are passenger walking distance and connections, ground-handler load, and schedule stability including remote-stand and zone-change penalties. This solves one balanced objective; the Trade-offs tab traces the full Pareto front of non-dominated strategies.</p>
+
+      <button class="btn-primary" id="optBtn" onclick="runOptimization()">Run apron optimization</button>
+      <button class="btn-ghost" id="rollBtn" onclick="rollingReoptimize()" style="margin-left:8px">Advance 5 min and re-optimize</button>
+
+      <div class="solve-meta" id="solveMeta"></div>
+
+      <div id="optStale"></div>
+
+      <div id="optResult"></div>
+
+      <div class="opt-panels"><div id="optRobust"></div><div id="optValue"></div></div>
+
+      <button class="btn-primary" id="optAcceptBtn" style="display:none;margin-top:14px" onclick="acceptOptimize()">Accept this allocation &rarr;</button>
+    </section>
+
+    <section class="tabpane" id="pane-pareto">
+      <p class="opt-intro">There is no single best allocation. The three objectives conflict: protecting passenger walking distance worsens handler balance, and maximizing contact-stand use sacrifices schedule stability. The solver traces the <b>Pareto front</b> of non-dominated allocations with an epsilon-constraint sweep over the same MIP, minimizing one objective while bounding the others, then surfaces three signature strategies. You, or the governance owner, choose which trade-off to accept. The chosen strategy is what the digital twin projects forward.</p>
+
+      <button class="btn-primary" id="paretoBtn" onclick="runPareto()">Compute trade-off front</button>
+
+      <div class="solve-meta" id="paretoStatus"></div>
+
+      <div id="paretoUI"></div>
+    </section>
+
+    <section class="tabpane" id="pane-changes">
+      <p class="opt-intro">Every committed decision is logged here. After any change to the operating picture, the clock advancing or a disruption injected, the system re-checks every committed assignment against the current constraints, not only the flights still in the queue. An assignment that is no longer valid is superseded and returned to the decision queue, and clearing the condition restores it. This is continuous revalidation, computed against the live picture rather than assumed final.</p>
+      <div id="changesUI"></div>
+    </section>
+
+    <section class="tabpane" id="pane-twin">
+      <p class="twin-intro">The digital twin takes the allocation you chose on the Trade-offs tab and projects it forward in time. The whole-apron optimizer places aircraft for the picture as it is now. The twin runs the clock on and reveals the second-order consequences a snapshot cannot see: passport queues building, baggage belts loading, ground handlers stretching, and connections coming under threat. This is the depth-over-time the per-flight tool cannot reach.</p>
+
+      <button class="btn-primary" id="twinBtn" onclick="runTwin()">Project the chosen strategy forward</button>
+
+      <div id="twinUI"></div>
+    </section>
+
+    <section class="tabpane" id="pane-value">
+      <p class="opt-intro">The same disruption, four ways of running the apron. <b>Base</b> does nothing. <b>A</b> optimizes once on the initial picture. <b>B</b> keeps re-optimizing as the picture changes. <b>C</b> re-optimizes and shifts the trade-off to whichever resource is closest to maxing out. The digital twin scores every policy against the same reality, and the cost of the afternoon is integrated in euros. The gap between the curves is the value of optimizing, of optimizing continuously, and of optimizing adaptively.</p>
+      <button class="btn-primary" id="valueBtn" onclick="runValueCases()">Compute value cases</button>
+      <div id="valueUI" style="margin-top:14px"></div>
+    </section>
+
+    <section class="tabpane" id="pane-gov">
+      <p class="opt-intro">How this system sits under the EU AI Act, and what keeps it compliant in practice. The honest position is to classify it at the tier it actually occupies, apply the oversight of a higher tier voluntarily, and name the threshold that would move it up.</p>
+
+      <div class="gov-banner">
+        <div class="gov-tier">Limited&#8209;risk</div>
+        <div class="gov-tier-x">
+          <b>Most likely limited&#8209;risk, not Annex III high&#8209;risk.</b>
+          A read&#8209;only, advisory stand allocator is not a safety component of critical infrastructure, even though an airport is critical infrastructure. The system proposes and explains; a person decides and accepts. It is decision support, not an automated safety function.
+        </div>
+      </div>
+
+      <div class="gov-grid">
+        <div class="gov-card">
+          <h4>What applies at limited&#8209;risk</h4>
+          <ul>
+            <li><b>Transparency duties (Article 50)</b> on the conversational interface: people are told they are interacting with an AI, and AI&#8209;generated content is identifiable.</li>
+            <li><b>GPAI obligations</b> sit with the model provider, Microsoft, as the foundation&#8209;model and Copilot Studio provider, not with the airport as the deployer.</li>
+          </ul>
+        </div>
+        <div class="gov-card">
+          <h4>The threshold to high&#8209;risk</h4>
+          <p>What would move this up is <b>autonomy</b>. Writing allocations back to Airhart automatically, or cancelling or diverting flights without a person, would make it a safety&#8209;relevant automated component. Staying read&#8209;only and advisory, with a human accepting every change, keeps it below that line. <b>Article 14 human oversight</b> is the design boundary: disregard, override, reverse, and stop.</p>
+        </div>
+        <div class="gov-card">
+          <h4>What binds in practice, regardless of tier</h4>
+          <ul>
+            <li><b>GDPR.</b> Passenger and connection records are personal data, so lawful basis, data minimisation, and retention limits apply. This demo runs on synthetic data only.</li>
+            <li><b>Danish co&#8209;determination.</b> A system that changes how duty managers and ground staff work is subject to works&#8209;council consultation under the Danish model. Engage the works council early, not after deployment.</li>
+          </ul>
+        </div>
+        <div class="gov-card">
+          <h4>The position we take</h4>
+          <p>Classify honestly as limited&#8209;risk. Apply high&#8209;risk&#8209;grade oversight voluntarily: the Article 14 controls plus a full, replayable audit log of every proposal and decision. Name the threshold that would trigger high&#8209;risk, and treat crossing it, write&#8209;back or auto&#8209;cancel, as a governance decision rather than a feature toggle.</p>
+        </div>
+      </div>
+
+      <p class="gov-foot">Current posture in this build: read&#8209;only, advisory, human&#8209;in&#8209;the&#8209;loop. The system never allocates autonomously and never cancels or diverts a flight. Every committed assignment is revalidated continuously and logged in the Event log.</p>
+    </section>
+
+    <section class="tabpane" id="pane-defs">
+      <div class="defs">
+        <section>
+          <h3>The decision and the engine</h3>
+          <p class="lead">The app re-allocates every disrupted flight across the whole apron at once, computes the result with a real optimizer, and presents it for a person to confirm. It is read-only and advisory.</p>
+          <dl>
+            <dt>The decision</dt>
+            <dd>Assign each flight that needs a stand to one stand, or escalate it if none fits. Stand allocation is the airport's own call. Divert and cancel stay with the airline, ATC, and the Network Manager.</dd>
+            <dt>Binary assignment (MIP)</dt>
+            <dd>Each flight-and-stand pairing is a yes-or-no decision, <span class="f">x[flight, stand]</span> set to 1 or 0. A mixed-integer program picks the set of 1s that minimizes total cost while obeying the hard constraints. Solved by <span class="f">glpk.js</span>, the GLPK solver compiled to WebAssembly, running locally in the browser.</dd>
+            <dt>Hard constraints</dt>
+            <dd>Rules that cannot be broken: a stand's size code must fit the aircraft, a stand that is out of service or already occupied at that time is unavailable, and no two aircraft may overlap in time on one stand.</dd>
+            <dt>Soft costs</dt>
+            <dd>Preferences, not rules. Every option carries a cost, and the solver minimizes the weighted total. These are the three objective scores below.</dd>
+            <dt>Escalate</dt>
+            <dd>If no stand can take a flight, the solver assigns an escalate option rather than forcing an illegal stand. That surfaces the flight as a redirect or cancel candidate for the airline and ATC. The airport never cancels a flight itself.</dd>
+          </dl>
+        </section>
+
+        <section>
+          <h3>The three objective scores</h3>
+          <p class="lead">Each score is the sum across all re-allocated flights. Lower is better. The numbers are dimensionless cost points, not minutes, meters, or kroner. Compare scores within one axis, never across axes: a passenger score of 294 is not "worse" than a handler score of 85.</p>
+          <dl>
+            <dt>Passenger score</dt>
+            <dd>How far passengers walk and how exposed their connections are. Per flight, <span class="f">(passengers / 100 &times; walking time)</span> plus a connection-risk penalty when a remote stand carries tight connections. Higher when more passengers walk further, or connecting passengers land far out.</dd>
+            <dt>Handler score</dt>
+            <dd>Ground-handler strain. Per flight, <span class="f">handler load factor &times; remote-or-contact multiplier &times; flight size</span>, plus the distance from that handler's apron base. Higher when a stretched handler services remote stands or stands far from its equipment.</dd>
+            <dt>Schedule score</dt>
+            <dd>Plan stability and contact-stand use. A fixed penalty of <span class="f">40</span> per remote stand used, <span class="f">8</span> per size code a stand is larger than the aircraft, and <span class="f">25</span> for a forced zone change. Higher when the plan leans on remote stands, oversized stands, or zone changes.</dd>
+          </dl>
+          <div class="callout"><b>On the unit.</b> These are relative synthetic scores. They capture the shape of the trade-off correctly but not its real-world magnitude. In production they would be calibrated to real units, for example passenger connection-minutes lost, handler overtime-hours, schedule delay-minutes, or a euro cost, so the trade-off is expressed in terms operations and finance negotiate over. The optimization and the Pareto structure are real; the calibration is the next step.</div>
+        </section>
+
+        <section>
+          <h3>Trade-offs and the Pareto front</h3>
+          <p class="lead">The three objectives conflict, so there is no single best allocation. The solver lays out the genuine choices and leaves the judgment to a person.</p>
+          <dl>
+            <dt>Dominance</dt>
+            <dd>Allocation A dominates allocation B if A is at least as good as B on all three scores and strictly better on at least one. B is then strictly worse, a wasted option, so it is discarded.</dd>
+            <dt>Non-dominated allocation</dt>
+            <dd>One that nothing dominates. To improve any one score you must give up ground on another. These are the only options worth considering.</dd>
+            <dt>Pareto front</dt>
+            <dd>The full set of non-dominated allocations, the points plotted in the scatter. There is no mathematically best option among them. Dominance ranks bad options out, but cannot rank the survivors. Choosing one needs a human preference.</dd>
+            <dt>Signature strategies</dt>
+            <dd>The three extreme points on the front: lowest passenger score (protect passengers), lowest handler score (protect handlers), lowest schedule score (protect schedule).</dd>
+            <dt>Epsilon-constraint method</dt>
+            <dd>How the front is traced. Minimize one objective while capping the other two, then sweep the caps across a grid. Each solve returns one non-dominated point. This is the correct method for an integer program, where a simple weighted average would skip valid points.</dd>
+          </dl>
+        </section>
+
+        <section>
+          <h3>Airport and operations terms</h3>
+          <dl>
+            <dt>Size code (A to F)</dt>
+            <dd>ICAO aerodrome reference code by wingspan. A stand's maximum code must be equal to or larger than the aircraft's. An A320 is code C, a B777 is E, an A380 is F. R8 is the only code-F stand, so the EK151 A380 can only go there.</dd>
+            <dt>Contact vs remote</dt>
+            <dd>A contact stand has a jet bridge at the terminal. A remote stand sits on the apron and needs bus boarding plus extra handling, so it costs passengers and handlers more.</dd>
+            <dt>Schengen / non-Schengen</dt>
+            <dd>Passport-control routing. A Schengen flight on a non-Schengen contact stand, or the reverse, forces a zone change, which the schedule score penalizes. Remote stands are zone-neutral.</dd>
+            <dt>Baggage belt</dt>
+            <dd>Each contact pier feeds one reclaim belt; remote stands share the remote belt. Belt load is the bags currently feeding it.</dd>
+            <dt>Ground handler</dt>
+            <dd>The company servicing the turnaround (Aviator, Menzies, and SGH here), each with a capacity of simultaneous turnarounds. A handler near capacity is an operational risk.</dd>
+            <dt>Handler base</dt>
+            <dd>Each handler stages crews and equipment in an apron zone. Servicing a stand far from that base adds drive time and vehicle cycles, counted in the handler score as strain.</dd>
+            <dt>Dwell</dt>
+            <dd>Minutes a flight occupies a stand, from on-block to off-block.</dd>
+            <dt>Walking-time proxy</dt>
+            <dd>Minutes from a stand to central immigration and connections, used as the passenger-distance measure.</dd>
+          </dl>
+        </section>
+
+        <section class="secnote">
+          <h3>Data, timing, and governance</h3>
+          <dl>
+            <dt>Synthetic data</dt>
+            <dd>The traffic is illustrative, seeded with real CPH carriers and routes. EK151 is the real Emirates A380 from Dubai. Other flight numbers are realistic but not claimed as specific scheduled services.</dd>
+            <dt>ML predicted times</dt>
+            <dd>Predicted on-block times with an uncertainty band, shown synthetic here, standing in for a model trained on historical A-CDM data. The scheduled time is struck through against the prediction.</dd>
+            <dt>Live feed (Airhart)</dt>
+            <dd>The ticking clock and the gauges stand in for a live read-only feed from CPH's airport operational database, Airhart, with handler, baggage, and passenger-connection data.</dd>
+            <dt>Governance</dt>
+            <dd>Read-only, advisory, human-in-the-loop. The system computes and explains; a person decides and confirms. It never allocates autonomously and never cancels or diverts a flight, in line with EU AI Act Article 14 human oversight.</dd>
+          </dl>
+        </section>
+      </div>
+    </section>
+
+    <section class="tabpane" id="pane-config">
+      <p class="opt-intro">These are the policy constants the governance owner tunes, surfaced in one place instead of hidden in the code. Each change re-runs the optimization, so you can see its effect on the allocation. The defaults reproduce the verified base scenario exactly; <b>Reset to defaults</b> restores them.</p>
+      <div id="configUI"></div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalBox"></div>
+</div>
+
+<script type="module">
+  /* Vendored solver: glpk.js v5.0.0 (GLPK via WebAssembly), self-contained and offline.
+     The browser build spawns a worker from an inline blob, so solve() is async. */
+  import GLPK from './assets/glpk.js';
+  window.__glpkReady = GLPK()
+    .then(g => { window.__glpk = g; return g; })
+    .catch(err => { console.error('GLPK init failed:', err); throw err; });
+</script>
+
+<script>
+/* ----------------------------------------------------------------------
+   CPH Apron Optimizer (Full Scale) - synthetic data model + live board.
+   Times are minutes since local midnight. Base "now" is 14:20 = 860.
+   This file is the data foundation; later phases add the MIP optimizer,
+   the Pareto chooser, and the digital twin, all reading these structures.
+---------------------------------------------------------------------- */
+
+const BASE_NOW = 860; // 14:20
+
+const HANDLERS = [
+  { id: 'Aviator', capacity: 6 },
+  { id: 'Menzies', capacity: 6 },
+  { id: 'SGH', capacity: 5 },
+];
+
+// Baggage belts: each contact pier feeds one belt; remote stands share the remote belt.
+const BELTS = ['Belt A', 'Belt B', 'Belt C', 'Belt E', 'Remote belt'];
+
+// zone: S = Schengen, N = non-Schengen, M = mixed. code = ICAO size code (max the stand takes).
+// walk = walking-time proxy (minutes) from stand to central immigration / connections.
+const STANDS = [
+  // Pier A - Schengen contact
+  { id: 'A8',  type: 'contact', code: 'C', zone: 'S', belt: 'Belt A', walk: 5,  oos: false },
+  { id: 'A10', type: 'contact', code: 'C', zone: 'S', belt: 'Belt A', walk: 6,  oos: false },
+  { id: 'A12', type: 'contact', code: 'D', zone: 'S', belt: 'Belt A', walk: 7,  oos: false },
+  { id: 'A14', type: 'contact', code: 'C', zone: 'S', belt: 'Belt A', walk: 8,  oos: false },
+  // Pier B - Schengen contact (B16 is the central stand that fails)
+  { id: 'B14', type: 'contact', code: 'C', zone: 'S', belt: 'Belt B', walk: 9,  oos: false },
+  { id: 'B16', type: 'contact', code: 'E', zone: 'S', belt: 'Belt B', walk: 10, oos: true,  oosReason: 'Jet bridge fault' },
+  { id: 'B18', type: 'contact', code: 'D', zone: 'S', belt: 'Belt B', walk: 11, oos: false },
+  // Pier C - non-Schengen contact
+  { id: 'C24', type: 'contact', code: 'E', zone: 'N', belt: 'Belt C', walk: 12, oos: false },
+  { id: 'C26', type: 'contact', code: 'C', zone: 'N', belt: 'Belt C', walk: 13, oos: false },
+  { id: 'C28', type: 'contact', code: 'D', zone: 'N', belt: 'Belt C', walk: 14, oos: false },
+  // Pier E - mixed contact
+  { id: 'E30', type: 'contact', code: 'E', zone: 'M', belt: 'Belt E', walk: 15, oos: false },
+  { id: 'E32', type: 'contact', code: 'C', zone: 'M', belt: 'Belt E', walk: 16, oos: false },
+  // Remote stands (bus boarding)
+  { id: 'R6',  type: 'remote', code: 'E', zone: 'M', belt: 'Remote belt', walk: 22, oos: false },
+  { id: 'R8',  type: 'remote', code: 'F', zone: 'M', belt: 'Remote belt', walk: 25, oos: false },
+  { id: 'R10', type: 'remote', code: 'E', zone: 'M', belt: 'Remote belt', walk: 23, oos: false },
+  { id: 'R12', type: 'remote', code: 'C', zone: 'M', belt: 'Remote belt', walk: 24, oos: false },
+  { id: 'R14', type: 'remote', code: 'C', zone: 'M', belt: 'Remote belt', walk: 26, oos: false },
+  { id: 'R16', type: 'remote', code: 'D', zone: 'M', belt: 'Remote belt', walk: 24, oos: false },
+];
+
+/* Flights.
+   needsRealloc = true  -> part of the disruption set the optimizer must place.
+   needsRealloc = false -> already settled on a stand this window (board context,
+                           and it consumes a stand + handler slot + belt capacity).
+   schedOn  = scheduled on-block (minutes). predOn = ML predicted on-block.
+   predBand = +/- minutes uncertainty on the ML prediction.
+   dwell    = stand occupancy minutes (on-block to off-block).
+   conPax   = connecting passengers. minCon = tightest connection time (minutes).
+*/
+const FLIGHTS = [
+  // --- disruption set: need a stand now ---
+  { id: 'SK1425', carrier: 'SAS',        from: 'OSL', dir: 'arr', ac: 'A320', code: 'C', zone: 'S', handler: 'SGH',
+    plannedStand: 'B16', schedOn: 855, predOn: 868, predBand: 4, dwell: 45, pax: 168, bags: 140, conPax: 38, minCon: 35, needsRealloc: true },
+  { id: 'LH2438', carrier: 'Lufthansa',  from: 'FRA', dir: 'arr', ac: 'A321', code: 'C', zone: 'S', handler: 'Menzies',
+    plannedStand: 'B16', schedOn: 862, predOn: 874, predBand: 5, dwell: 50, pax: 184, bags: 152, conPax: 51, minCon: 30, needsRealloc: true },
+  { id: 'EK151',  carrier: 'Emirates',   from: 'DXB', dir: 'arr', ac: 'A388', code: 'F', zone: 'N', handler: 'Aviator',
+    plannedStand: 'C24', schedOn: 795, predOn: 895, predBand: 8, dwell: 90, pax: 489, bags: 410, conPax: 96, minCon: 45, needsRealloc: true },
+  { id: 'AY911',  carrier: 'Finnair',    from: 'HEL', dir: 'arr', ac: 'A320', code: 'C', zone: 'S', handler: 'Menzies',
+    plannedStand: 'A12', schedOn: 870, predOn: 879, predBand: 4, dwell: 45, pax: 156, bags: 128, conPax: 29, minCon: 40, needsRealloc: true },
+  { id: 'KL1129', carrier: 'KLM',        from: 'AMS', dir: 'arr', ac: 'B738', code: 'C', zone: 'S', handler: 'Aviator',
+    plannedStand: 'A14', schedOn: 878, predOn: 884, predBand: 3, dwell: 45, pax: 172, bags: 139, conPax: 44, minCon: 35, needsRealloc: true },
+  { id: 'BA822',  carrier: 'British A.', from: 'LHR', dir: 'arr', ac: 'A320', code: 'C', zone: 'N', handler: 'Menzies',
+    plannedStand: 'C26', schedOn: 884, predOn: 892, predBand: 5, dwell: 45, pax: 161, bags: 133, conPax: 35, minCon: 38, needsRealloc: true },
+  { id: 'TK1789', carrier: 'Turkish',    from: 'IST', dir: 'arr', ac: 'A321', code: 'C', zone: 'N', handler: 'Aviator',
+    plannedStand: 'C28', schedOn: 888, predOn: 901, predBand: 6, dwell: 55, pax: 188, bags: 165, conPax: 40, minCon: 50, needsRealloc: true },
+  { id: 'EW9648', carrier: 'Eurowings',  from: 'DUS', dir: 'arr', ac: 'A319', code: 'C', zone: 'S', handler: 'SGH',
+    plannedStand: 'B18', schedOn: 892, predOn: 898, predBand: 3, dwell: 40, pax: 132, bags: 104, conPax: 19, minCon: 45, needsRealloc: true },
+
+  // --- departures flagged for escalation review (handled in a later phase) ---
+  { id: 'DY1741', carrier: 'Norwegian',  to: 'BGO', dir: 'dep', ac: 'B738', code: 'C', zone: 'S', handler: 'Aviator',
+    plannedStand: 'A8', schedOn: 905, predOn: 919, predBand: 6, dwell: 0, pax: 174, bags: 141, conPax: 0, minCon: 0, needsRealloc: false, watch: 'hold', slotAffected: true },
+  { id: 'WF402',  carrier: 'Wideroe',    to: 'BLL', dir: 'dep', ac: 'DH8D', code: 'B', zone: 'S', handler: 'SGH',
+    plannedStand: 'A10', schedOn: 900, predOn: 928, predBand: 9, dwell: 0, pax: 64,  bags: 38,  conPax: 0, minCon: 0, needsRealloc: false, watch: 'cancel' },
+
+  // --- settled traffic already on stand this window (board context + resource load) ---
+  { id: 'SK1402', carrier: 'SAS',        from: 'ARN', dir: 'arr', ac: 'A20N', code: 'C', zone: 'S', handler: 'SGH',
+    stand: 'A8',  schedOn: 840, predOn: 840, predBand: 0, dwell: 45, pax: 160, bags: 130, conPax: 30, minCon: 40, needsRealloc: false },
+  { id: 'D8' + '1', carrier: 'Norwegian',from: 'BGO', dir: 'arr', ac: 'B738', code: 'C', zone: 'S', handler: 'Aviator',
+    stand: 'A10', schedOn: 835, predOn: 835, predBand: 0, dwell: 45, pax: 168, bags: 138, conPax: 22, minCon: 35, needsRealloc: false, label: 'DY731' },
+  { id: 'SK0501', carrier: 'SAS',        from: 'LHR', dir: 'arr', ac: 'A320', code: 'C', zone: 'N', handler: 'SGH',
+    stand: 'C24', schedOn: 845, predOn: 845, predBand: 0, dwell: 50, pax: 165, bags: 140, conPax: 33, minCon: 42, needsRealloc: false },
+  { id: 'LH837',  carrier: 'Lufthansa',  from: 'FRA', dir: 'arr', ac: 'A320', code: 'C', zone: 'S', handler: 'Menzies',
+    stand: 'B14', schedOn: 838, predOn: 838, predBand: 0, dwell: 45, pax: 158, bags: 126, conPax: 41, minCon: 30, needsRealloc: false },
+  { id: 'AY915',  carrier: 'Finnair',    from: 'HEL', dir: 'arr', ac: 'A319', code: 'C', zone: 'S', handler: 'Menzies',
+    stand: 'A14', schedOn: 850, predOn: 850, predBand: 0, dwell: 40, pax: 130, bags: 101, conPax: 18, minCon: 44, needsRealloc: false },
+  { id: 'QR161',  carrier: 'Qatar',      from: 'DOH', dir: 'arr', ac: 'B788', code: 'E', zone: 'N', handler: 'Aviator',
+    stand: 'C28', schedOn: 825, predOn: 825, predBand: 0, dwell: 80, pax: 254, bags: 233, conPax: 70, minCon: 50, needsRealloc: false },
+  { id: 'EW88',  carrier: 'Eurowings',   from: 'CGN', dir: 'arr', ac: 'A319', code: 'C', zone: 'S', handler: 'SGH',
+    stand: 'E32', schedOn: 852, predOn: 852, predBand: 0, dwell: 40, pax: 128, bags: 99,  conPax: 12, minCon: 48, needsRealloc: false, label: 'EW88' },
+  { id: 'UA45',  carrier: 'United',      from: 'EWR', dir: 'arr', ac: 'B752', code: 'D', zone: 'N', handler: 'Menzies',
+    stand: 'C26', schedOn: 815, predOn: 815, predBand: 0, dwell: 70, pax: 169, bags: 158, conPax: 55, minCon: 55, needsRealloc: false, label: 'UA45' },
+  { id: 'OS302', carrier: 'Austrian',    from: 'VIE', dir: 'arr', ac: 'A320', code: 'C', zone: 'S', handler: 'Menzies',
+    stand: 'A12', schedOn: 858, predOn: 858, predBand: 0, dwell: 40, pax: 150, bags: 121, conPax: 26, minCon: 36, needsRealloc: false, label: 'OS302', vacates: 940 },
+];
+
+/* Synthetic outbound flights for the connection bank (digital twin flow only,
+   not part of the optimizer). Connecting passengers feed these; w is the share
+   of the connection pool, and the three earliest departures absorb the at-risk
+   passengers (tight connections miss the imminent flights). Illustrative. */
+const OUTBOUND = [
+  { id: 'SK1419', carrier: 'SAS',        to: 'OSL', dep: 935,  zone: 'S', w: 0.20 },
+  { id: 'LH2462', carrier: 'Lufthansa',  to: 'FRA', dep: 945,  zone: 'S', w: 0.18 },
+  { id: 'BA825',  carrier: 'British A.', to: 'LHR', dep: 950,  zone: 'N', w: 0.17 },
+  { id: 'AY913',  carrier: 'Finnair',    to: 'HEL', dep: 960,  zone: 'S', w: 0.15 },
+  { id: 'DL271',  carrier: 'Delta',      to: 'JFK', dep: 1000, zone: 'N', w: 0.16 },
+  { id: 'EK152',  carrier: 'Emirates',   to: 'DXB', dep: 1015, zone: 'N', w: 0.14 },
+];
+
+/* ------------------------------ state ------------------------------ */
+const state = { now: BASE_NOW, playing: false, timer: null,
+  committed: {},          // flightId -> standId or 'ESC' (human decisions only)
+  changeLog: [],          // committed changes and superseded re-decisions
+  loggedInvalid: new Set(),
+  disruptions: { standFaults: false, handlerShortage: false, standCrunch: false },
+  escalations: {},        // flightId -> { type, t } for departures escalated to the airline
+  committedTow: new Set(),// Phase C: flights committed with a tow to remote
+  logFilter: null, expandedSeq: null };
+
+// Injectable disruptions. standFaults takes two contact stands out of service
+// (caught by the revalidation sweep). handlerShortage drops a handler's capacity
+// so it goes over capacity (gauge, optimizer cost, and twin cascade all react).
+const DYNAMIC_OOS = { E30: 'Ground power unit fault', C26: 'Jet bridge fault' };
+const CRUNCH_OOS = { E30: 'Apron resurfacing works' };   // standCrunch leaves C24 the only code-E contact stand
+const SHORTAGE_HANDLER = 'Aviator';
+const SHORTAGE_CAP = 2;
+
+/* Wide-body parking crunch (Phase C demo). Two code-E long-haul arrivals are both
+   scheduled onto C24, the only code-E contact stand left once B16 and E30 are out.
+   SQ352 has a long dwell, so towing it to remote parking frees C24 for QR163 instead
+   of sending QR163 to a remote stand. Injected on demand; the base picture is unchanged. */
+const CRUNCH_FLIGHTS = [
+  { id: 'SQ352', carrier: 'Singapore', from: 'SIN', dir: 'arr', ac: 'A359', code: 'E', zone: 'N', handler: 'Aviator',
+    plannedStand: 'C24', schedOn: 895, predOn: 900, predBand: 6, dwell: 95, pax: 296, bags: 248, conPax: 64, minCon: 55, needsRealloc: true },
+  { id: 'QR163', carrier: 'Qatar', from: 'DOH', dir: 'arr', ac: 'A359', code: 'E', zone: 'N', handler: 'Menzies',
+    plannedStand: 'C24', schedOn: 915, predOn: 920, predBand: 5, dwell: 45, pax: 284, bags: 236, conPax: 52, minCon: 45, needsRealloc: true },
+];
+
+let CV = { valid: {}, invalid: [] };   // recomputed every render
+
+function isStandOOS(s) { return s.oos || (state.disruptions.standFaults && !!DYNAMIC_OOS[s.id]) || (state.disruptions.standCrunch && !!CRUNCH_OOS[s.id]); }
+function standOOSReason(s) { return s.oos ? s.oosReason : (state.disruptions.standCrunch && CRUNCH_OOS[s.id]) || DYNAMIC_OOS[s.id]; }
+function handlerCapacity(id) {
+  const h = HANDLERS.find(x => x.id === id);
+  return (state.disruptions.handlerShortage && id === SHORTAGE_HANDLER) ? SHORTAGE_CAP : h.capacity;
+}
+
+function disName(f) { return f.label || f.id; }
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+function fmt(min) { const m = ((min % 1440) + 1440) % 1440; return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
+function standById(id) { return STANDS.find(s => s.id === id); }
+
+// A settled flight occupies its stand from predicted on-block to on-block + dwell.
+function reallocFlights() { return FLIGHTS.filter(f => f.needsRealloc); }
+function flightById(fid) { return FLIGHTS.find(f => f.id === fid); }
+
+// The stand a flight is effectively on: its settled stand, or a valid committed stand.
+function effectiveStand(f) {
+  if (f.stand) return f.stand;
+  const v = CV.valid[f.id];
+  return (v && v !== 'ESC') ? v : null;
+}
+
+function occupantOf(standId) {
+  return FLIGHTS.find(f => effectiveStand(f) === standId && f.dir !== 'dep' &&
+    state.now >= f.predOn && state.now < f.predOn + (f.dwell || 45));
+}
+function nextOn(standId) {
+  return FLIGHTS.filter(f => effectiveStand(f) === standId && f.dir !== 'dep' && f.predOn > state.now)
+    .sort((a, b) => a.predOn - b.predOn)[0];
+}
+
+function handlerLoad(id) {
+  return FLIGHTS.filter(f => f.handler === id && effectiveStand(f) && f.dir !== 'dep' &&
+    state.now >= f.predOn && state.now < f.predOn + (f.dwell || 45)).length;
+}
+function beltLoad(belt) {
+  return FLIGHTS.filter(f => { const sid = effectiveStand(f); return sid && f.dir !== 'dep' && standById(sid).belt === belt &&
+    state.now >= f.predOn && state.now < f.predOn + (f.dwell || 45); })
+    .reduce((sum, f) => sum + f.bags, 0);
+}
+
+/* ----------------- commit, validity, revalidation -----------------
+   A committed assignment is a human decision (state.committed). On every
+   render we re-check each one against current conditions, computed not
+   stored, so an injected fault re-flags a sitting aircraft and clearing it
+   self-heals. Counts and the board derive from CV (valid vs invalid).
+------------------------------------------------------------------- */
+function committedEntries() { return Object.keys(state.committed).map(fid => ({ fid, stand: state.committed[fid] })); }
+
+// Contact-stand occupancy of a committed flight. A towed flight holds the stand only
+// for its deboard and board slivers; the parked middle is on a remote position.
+function committedStandIntervals(fid) {
+  const f = flightById(fid);
+  if (state.committedTow && state.committedTow.has(fid)) { const sl = towSlivers(f); return [sl.deboard, sl.board]; }
+  return [flightWindow(f)];
+}
+
+function checkCommittedValid(fid) {
+  const stand = state.committed[fid];
+  if (stand === 'ESC') return { ok: true, escalated: true };
+  const f = flightById(fid), s = standById(stand);
+  if (!s) return { ok: false, reason: 'stand not found' };
+  if (isStandOOS(s)) return { ok: false, reason: stand + ' out of service: ' + standOOSReason(s) };
+  if (CODE_NUM[s.code] < CODE_NUM[f.code]) return { ok: false, reason: stand + ' too small for ' + f.ac };
+  const mine = committedStandIntervals(fid);
+  const blocker = nonReallocOnStand(stand).find(g => { const [gs, ge] = occWindowOf(g); return mine.some(mi => overlapsBy(mi[0], mi[1], gs, ge, pairBuffer(f, g))); });
+  if (blocker) return { ok: false, reason: stand + ' now occupied by ' + disName(blocker) };
+  const other = committedEntries().find(e => {
+    if (e.fid === fid || e.stand !== stand) return false;
+    const theirs = committedStandIntervals(e.fid);
+    return mine.some(mi => theirs.some(ti => overlapsBy(mi[0], mi[1], ti[0], ti[1], pairBuffer(f, flightById(e.fid)))));
+  });
+  if (other) return { ok: false, reason: stand + ' double-booked with ' + disName(flightById(other.fid)) };
+  return { ok: true };
+}
+
+function recomputeCV() {
+  const valid = {}, invalid = [];
+  committedEntries().forEach(e => {
+    const r = checkCommittedValid(e.fid);
+    if (r.escalated) valid[e.fid] = 'ESC';
+    else if (r.ok) valid[e.fid] = e.stand;
+    else invalid.push({ fid: e.fid, stand: e.stand, reason: r.reason });
+  });
+  CV = { valid, invalid };
+}
+
+function revalidateLog() {
+  const invalidIds = new Set(CV.invalid.map(i => i.fid));
+  CV.invalid.forEach(i => {
+    if (!state.loggedInvalid.has(i.fid)) { state.loggedInvalid.add(i.fid); logChange('supersede', i.fid, i.stand, i.reason); }
+  });
+  Array.from(state.loggedInvalid).forEach(fid => {
+    if (!invalidIds.has(fid)) {
+      state.loggedInvalid.delete(fid);
+      if (state.committed[fid]) logChange('restore', fid, state.committed[fid], 'conditions cleared, assignment valid again');
+    }
+  });
+}
+
+function needsDecisionFlights() { return reallocFlights().filter(f => !CV.valid[f.id]); }
+
+function logChange(action, fid, stand, reason) {
+  state.changeLog.unshift({ seq: (state._seq = (state._seq || 0) + 1), t: state.now, action, fid, stand, reason });
+}
+
+function acceptAllocation(alloc, sourceLabel, towed) {
+  state.committedTow = towed || new Set();
+  let n = 0;
+  reallocFlights().forEach(f => {
+    const sid = alloc[f.id];
+    if (!sid) return;
+    state.committed[f.id] = sid;
+    state.loggedInvalid.delete(f.id);
+    if (sid === 'ESC') logChange('escalate', f.id, 'ESC', 'no feasible stand, redirect or cancel candidate');
+    else logChange('assign', f.id, sid, sourceLabel + (state.committedTow.has(f.id) ? ', towed to remote to free the stand' : ''));
+    n++;
+  });
+  logChange('accept', null, null, 'Accepted ' + sourceLabel + ' · ' + n + ' assignment' + (n > 1 ? 's' : '') + (state.committedTow.size ? ' · ' + state.committedTow.size + ' tow' + (state.committedTow.size > 1 ? 's' : '') : ''));
+  render();
+  showTab('changes');
+}
+function acceptOptimize() { if (lastSolve) acceptAllocation(allocFromRes(lastSolve.res), 'whole-apron optimum', lastSolve.towed); }
+function acceptSelected() {
+  if (!window.__selectedStrategy) return;
+  const k = window.__selectedStrategy.key;
+  acceptAllocation(window.__selectedStrategy.alloc, k ? stratMeta(k).title : 'selected strategy');
+}
+function undoCommit(fid) {
+  delete state.committed[fid]; state.loggedInvalid.delete(fid); state.committedTow.delete(fid);
+  logChange('undo', fid, null, 'returned to the decision queue');
+  render();
+}
+function resetLive() {
+  state.committed = {}; state.changeLog = []; state.loggedInvalid = new Set();
+  setCrunchFlights(false);
+  state.disruptions = { standFaults: false, handlerShortage: false, standCrunch: false };
+  state.escalations = {};
+  state.committedTow = new Set();
+  state.expandedSeq = null; state.logFilter = null;
+  render();
+}
+/* ---- departure escalation: the airport flags and drafts; the airline decides ---- */
+let pendingEscalate = null;
+
+function escalateMessage(f) {
+  const off = fmt(f.predOn);
+  const delay = f.predOn - f.schedOn;
+  const band = f.predBand ? '±' + f.predBand + 'm' : 'tight band';
+  const route = f.from ? f.from + '-CPH' : 'CPH-' + f.to;
+  if (f.watch === 'cancel') {
+    const to = f.carrier + ' operations and the Network Manager (NMOC)';
+    const subj = 'Subject: ' + f.id + ' ' + route + ' flagged as cancellation candidate';
+    const body = f.id + ' (' + f.carrier + ', ' + f.ac + ') predicted off-block ' + off + ', delay +' + delay + ' min, band ' + band + '. ' +
+      'Handler ' + f.handler + ' constrained. Reason flagged: no feasible stand or sequence within the window. ' +
+      'Booked load ' + f.pax + '. If operated, the knock-on is added stand-hours and handler pressure; if cancelled, ' + f.pax +
+      ' passengers need reaccommodation and the aircraft rotation is affected. ' +
+      'The cancellation decision sits with the airline and the Network Manager. The airport does not cancel. Please confirm intent.';
+    return { to, text: subj + '\n\n' + body };
+  }
+  const to = f.carrier + ' operations' + (f.slotAffected ? ', cc ATC slot coordination (CTOT affected)' : '');
+  const subj = 'Subject: ' + f.id + ' ' + route + ' flagged for hold review';
+  const body = f.id + ' (' + f.carrier + ', ' + f.ac + ') predicted off-block ' + off + ', delay +' + delay + ' min, band ' + band + '. ' +
+    'Handler ' + f.handler + ' at capacity, so the turnaround may slip further. ' +
+    'Holding to stabilise the turnaround risks the CTOT slot and delays stand ' + f.plannedStand + ' release for the next aircraft. ' +
+    'Releasing on schedule protects the slot. The hold decision is yours. The airport can prioritise the transfer and bus if you choose to hold. Please advise.';
+  return { to, text: subj + '\n\n' + body };
+}
+
+function openEscalate(fid) {
+  pendingEscalate = fid;
+  const f = flightById(fid);
+  const m = escalateMessage(f);
+  const verb = f.watch === 'cancel' ? 'cancel' : 'hold';
+  document.getElementById('modalBox').innerHTML =
+    '<h3>Escalate ' + f.id + '</h3>' +
+    '<p class="sub">Recipients: ' + m.to + '. The airport recommends and escalates; it does not ' + verb + ' the flight itself.</p>' +
+    '<textarea id="escMsg" class="esc-msg" spellcheck="false">' + m.text + '</textarea>' +
+    '<div class="actions"><button class="mini ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="mini" id="copyBtn" onclick="copyEscMsg()">Copy message</button>' +
+    '<button class="mini primary" onclick="logEscalation()">Log escalation</button></div>';
+  document.getElementById('modal').classList.add('show');
+}
+
+function copyEscMsg() {
+  const ta = document.getElementById('escMsg');
+  const done = () => { const b = document.getElementById('copyBtn'); if (b) { b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy message'; }, 1400); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, () => { ta.select(); document.execCommand('copy'); done(); });
+  else { ta.select(); document.execCommand('copy'); done(); }
+}
+
+function logEscalation() {
+  const f = flightById(pendingEscalate);
+  const m = escalateMessage(f);
+  state.escalations[f.id] = { type: f.watch, t: state.now };
+  logChange('escalate', f.id, null, (f.watch === 'cancel' ? 'cancellation candidate' : 'hold review') + ', escalated to ' + m.to);
+  pendingEscalate = null;
+  closeModal();
+  render();
+  showTab('changes');
+}
+
+function undoDepEscalation(fid) {
+  delete state.escalations[fid];
+  state.changeLog = state.changeLog.filter(e => !(e.fid === fid && e.action === 'escalate' && e.stand == null));
+  render();
+}
+
+function acknowledgeDep(fid) {
+  state.escalations[fid] = { type: 'ack', t: state.now };
+  logChange('ack', fid, null, 'acknowledged, monitoring, no escalation');
+  render();
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('show'); pendingEscalate = null; }
+
+function toggleDisruption(key) {
+  state.disruptions[key] = !state.disruptions[key];
+  if (key === 'standCrunch') setCrunchFlights(state.disruptions.standCrunch);
+  const labels = { standFaults: 'stand faults (E30, C26)', handlerShortage: SHORTAGE_HANDLER + ' crew shortage, capacity ' + SHORTAGE_CAP,
+    standCrunch: 'wide-body parking crunch (E30 out, SQ352 and QR163 both want C24)' };
+  logChange('inject', null, null, (state.disruptions[key] ? 'Injected: ' : 'Cleared: ') + labels[key]);
+  render();
+}
+
+// Add or remove the crunch arrivals from the live picture. Removing also drops any
+// decisions logged against them so the committed picture stays consistent.
+function setCrunchFlights(on) {
+  if (on) { CRUNCH_FLIGHTS.forEach(f => { if (!FLIGHTS.some(g => g.id === f.id)) FLIGHTS.push(f); }); return; }
+  const ids = new Set(CRUNCH_FLIGHTS.map(f => f.id));
+  for (let i = FLIGHTS.length - 1; i >= 0; i--) if (ids.has(FLIGHTS[i].id)) FLIGHTS.splice(i, 1);
+  ids.forEach(id => { delete state.committed[id]; state.committedTow.delete(id); state.loggedInvalid.delete(id); });
+  state.changeLog = state.changeLog.filter(e => !ids.has(e.fid));
+}
+
+function flightStatus(f) {
+  const onStand = sid => (state.now >= f.predOn && state.now < f.predOn + (f.dwell || 45))
+    ? { txt: 'On stand ' + sid + ' · clears ' + fmt(f.predOn + (f.dwell || 45)), cls: 'pos' } : null;
+  if (f.needsRealloc) {
+    const v = CV.valid[f.id];
+    if (v === 'ESC') return { txt: 'Escalated, redirect/cancel', cls: 'warn' };
+    if (v) {
+      const os = onStand(v);
+      if (os) return os;
+      if (state.now < f.predOn) return { txt: 'Assigned ' + v + ' · arrives ' + fmt(f.predOn), cls: 'pos' };
+      return { txt: 'Cleared ' + v, cls: 'muted' };
+    }
+    const inv = CV.invalid.find(i => i.fid === f.id);
+    if (inv) return { txt: 'Re-decide: ' + inv.reason, cls: 'crit' };
+    const eta = f.predOn - state.now;
+    if (eta > 0) return { txt: 'Inbound, needs stand', cls: 'warn' };
+    return { txt: 'On final, no stand', cls: 'crit' };
+  }
+  const esc = state.escalations[f.id];
+  if (esc && esc.type === 'cancel') return { txt: 'Escalated, cancellation candidate', cls: 'warn' };
+  if (esc && esc.type === 'hold') return { txt: 'Escalated, hold review', cls: 'warn' };
+  if (esc && esc.type === 'ack') return { txt: 'Acknowledged, monitoring', cls: 'muted' };
+  if (f.watch === 'hold') return { txt: 'Departure, hold review', cls: 'muted' };
+  if (f.watch === 'cancel') return { txt: 'Departure, cancel review', cls: 'muted' };
+  if (state.now < f.predOn) return { txt: 'Inbound · arrives ' + fmt(f.predOn), cls: 'muted' };
+  return onStand(f.stand) || { txt: 'Cleared', cls: 'muted' };
+}
+
+/* ----------------------------- render ------------------------------ */
+function render() {
+  recomputeCV();
+  revalidateLog();
+  document.getElementById('clockText').textContent = fmt(state.now);
+  renderFeed();
+  renderApron();
+  renderFlights();
+  renderChanges();
+  renderOptimizePlan();
+}
+
+function buildSummary() {
+  const reDecide = CV.invalid.length;
+  const parts = ['Stand B16 is out of service after a jet bridge fault, so inbound aircraft are off-slot and the apron must be re-allocated. EK151, an Emirates A380, can only take the single remote code-F stand, R8.'];
+  if (state.disruptions.standFaults) parts.push('A further fault has taken E30 and C26 out of service; the revalidation sweep re-checks every committed assignment.');
+  if (state.disruptions.handlerShortage) parts.push(SHORTAGE_HANDLER + ' reports a crew shortage and cannot service all simultaneous turnarounds.');
+  if (state.disruptions.standCrunch) parts.push('Apron works have taken E30 out, leaving C24 the only code-E contact stand. Two long-haul arrivals, SQ352 and QR163, both need it. Towing the long-dwell SQ352 to remote parking frees C24 for QR163.');
+  if (reDecide) parts.push(reDecide + (reDecide > 1 ? ' committed assignments are' : ' committed assignment is') + ' no longer valid and ' + (reDecide > 1 ? 'have' : 'has') + ' returned to the queue.');
+  return parts.join(' ');
+}
+
+function renderFeed() {
+  const needs = needsDecisionFlights().length;
+  const committedN = Object.keys(state.committed).length;
+  document.getElementById('reallocCount').textContent = needs;
+  document.getElementById('flightTabN').textContent = FLIGHTS.length;
+  document.getElementById('optTabN').textContent = needs;
+  document.getElementById('changesTabN').textContent = committedN;
+
+  document.getElementById('disrStand').classList.toggle('active', state.disruptions.standFaults);
+  document.getElementById('disrHandler').classList.toggle('active', state.disruptions.handlerShortage);
+  document.getElementById('disrCrunch').classList.toggle('active', state.disruptions.standCrunch);
+
+  document.getElementById('summaryBox').innerHTML = '<p class="issue-head">Summary</p><p>' + buildSummary() + '</p>';
+
+  const zoneName = z => z === 'S' ? 'Schengen' : z === 'N' ? 'non-Schengen' : 'mixed';
+  const oos = STANDS.filter(isStandOOS);
+  document.getElementById('oosList').innerHTML = oos.map(s =>
+    '<div class="oos-item"><span class="oos-id">' + s.id + '</span><span class="oos-meta">' +
+    standOOSReason(s) + ' · code-' + s.code + ' · ' + zoneName(s.zone) + '</span></div>').join('');
+
+  const free = STANDS.filter(s => !isStandOOS(s) && !occupantOf(s.id)).length;
+  const usable = STANDS.filter(s => !isStandOOS(s)).length;
+  document.getElementById('standGauge').innerHTML = gaugeHtml('Free now', free, usable, free / usable);
+
+  document.getElementById('handlerGauges').innerHTML = HANDLERS.map(h => {
+    const load = handlerLoad(h.id);
+    const cap = handlerCapacity(h.id);
+    return gaugeHtml(h.id, load, cap, load / cap);
+  }).join('');
+
+  document.getElementById('beltGauges').innerHTML = BELTS.map(b => {
+    const bags = beltLoad(b);
+    const cap = b === 'Remote belt' ? 700 : 500;
+    return gaugeHtml(b, bags, cap, bags / cap, true);
+  }).join('');
+}
+
+function gaugeHtml(label, val, max, ratio, isBags) {
+  let cls = '';
+  if (ratio >= 1) cls = 'over'; else if (ratio >= 0.8) cls = 'warn';
+  const width = Math.min(100, Math.round(ratio * 100));
+  const right = isBags ? val + ' / ' + max + ' bags' : val + ' / ' + max;
+  return '<div class="gauge"><div class="gauge-head"><span class="k">' + label +
+    '</span><span class="v">' + right + '</span></div><div class="gauge-track">' +
+    '<div class="gauge-fill ' + cls + '" style="width:' + width + '%"></div></div></div>';
+}
+
+function renderApron() {
+  const piers = [
+    { name: 'Pier A', zone: 'Schengen', ids: ['A8', 'A10', 'A12', 'A14'] },
+    { name: 'Pier B', zone: 'Schengen', ids: ['B14', 'B16', 'B18'] },
+    { name: 'Pier C', zone: 'Non-Schengen', ids: ['C24', 'C26', 'C28'] },
+    { name: 'Pier E', zone: 'Mixed', ids: ['E30', 'E32'] },
+    { name: 'Remote apron', zone: 'Bus boarding', ids: ['R6', 'R8', 'R10', 'R12', 'R14', 'R16'] },
+  ];
+  document.getElementById('apronView').innerHTML = piers.map(p =>
+    '<div class="pier"><div class="pier-head"><h3>' + p.name + '</h3><span class="z">' +
+    p.zone + '</span></div><div class="stand-grid">' +
+    p.ids.map(standCardHtml).join('') + '</div></div>'
+  ).join('');
+}
+
+function standCardHtml(id) {
+  const s = standById(id);
+  const occ = occupantOf(id);
+  let cls = 'free', occHtml;
+  if (isStandOOS(s)) {
+    cls = 'oos';
+    occHtml = '<div class="stand-occ oos-txt">Out of service &middot; ' + standOOSReason(s) + '</div>';
+  } else if (occ) {
+    cls = 'occupied';
+    const clears = fmt(occ.predOn + (occ.dwell || 45));
+    occHtml = '<div class="stand-occ"><span class="who">' + disName(occ) + '</span> &middot; ' +
+      occ.ac + (occ.needsRealloc ? ' <span class="band">(assigned)</span>' : '') +
+      '<br><span class="band">clears ' + clears + '</span></div>';
+  } else {
+    const nx = nextOn(id);
+    const lbl = nx && nx.needsRealloc ? 'assigned ' : 'next ';
+    occHtml = '<div class="stand-occ free-txt">Available' +
+      (nx ? ' &middot; ' + lbl + disName(nx) + ' ~' + fmt(nx.predOn) : '') + '</div>';
+  }
+  const tag = s.type === 'remote'
+    ? '<span class="tag remote">Remote</span>'
+    : '<span class="tag contact">Contact</span>';
+  const zoneTxt = s.zone === 'S' ? 'Schengen' : s.zone === 'N' ? 'Non-Schengen' : 'Mixed';
+  return '<div class="stand ' + cls + '"><div class="stand-top"><span class="stand-id">' + s.id +
+    '</span><span class="stand-code">Code ' + s.code + '</span></div>' +
+    '<div class="stand-meta">' + tag + '<span>' + zoneTxt + '</span><span>' + s.belt +
+    '</span><span>walk ' + s.walk + 'm</span></div>' + occHtml + '</div>';
+}
+
+function renderFlights() {
+  const rows = FLIGHTS.slice().sort((a, b) => a.predOn - b.predOn).map(f => {
+    const st = flightStatus(f);
+    const route = f.dir === 'arr' ? (f.from + ' &rarr; CPH') : ('CPH &rarr; ' + f.to);
+    const delay = f.predOn - f.schedOn;
+    const timeCell = (delay !== 0 ? '<span class="t-old">' + fmt(f.schedOn) + '</span>' : '') +
+      '<span class="t-new">' + fmt(f.predOn) + '</span>' +
+      (f.predBand ? ' <span class="band">&plusmn;' + f.predBand + 'm</span>' : '');
+    const zoneTxt = f.zone === 'S' ? 'Schengen' : f.zone === 'N' ? 'Non-Schengen' : 'Mixed';
+    let act = '';
+    if (f.dir === 'dep' && !state.escalations[f.id]) {
+      act = f.watch
+        ? '<button class="row-act" onclick="openEscalate(\'' + f.id + '\')">Escalate</button>'
+        : '<button class="row-act ghost" onclick="acknowledgeDep(\'' + f.id + '\')">Acknowledge</button>';
+    }
+    return '<tr class="' + (f.needsRealloc ? 'realloc' : '') + '">' +
+      '<td><b>' + disName(f) + '</b><br><span class="band">' + f.carrier + '</span></td>' +
+      '<td>' + route + '</td>' +
+      '<td>' + f.ac + ' &middot; ' + f.code + '</td>' +
+      '<td>' + zoneTxt + '</td>' +
+      '<td>' + timeCell + '</td>' +
+      '<td>' + f.handler + '</td>' +
+      '<td>' + f.pax + ' / ' + f.bags + '</td>' +
+      '<td><span class="pill ' + st.cls + '">' + st.txt + '</span>' + act + '</td>' +
+      '</tr>';
+  }).join('');
+  document.getElementById('flightRows').innerHTML = rows;
+}
+
+function setLogFilter(fid) { state.logFilter = fid; renderChanges(); }
+
+function renderChanges() {
+  const el = document.getElementById('changesUI');
+  if (!el) return;
+  const assigned = Object.values(CV.valid).filter(v => v !== 'ESC').length;
+  const esc = Object.values(CV.valid).filter(v => v === 'ESC').length;
+  const redecide = CV.invalid.length;
+  const needs = needsDecisionFlights().length;
+  const summary = '<div class="chg-summary">' +
+    '<span class="chip ok">Assigned <b>' + assigned + '</b></span>' +
+    '<span class="chip">Escalated <b>' + esc + '</b></span>' +
+    (redecide ? '<span class="chip">Re-decide <b>' + redecide + '</b></span>' : '') +
+    '<span class="chip">Awaiting decision <b>' + needs + '</b></span></div>';
+
+  if (!state.changeLog.length) {
+    el.innerHTML = summary + '<p class="cap">No events yet. Run the optimizer or pick a strategy, then accept it. Decisions, strategy changes, and picture changes are logged here and revalidate continuously against the live picture.</p>';
+    return;
+  }
+
+  const fids = [...new Set(state.changeLog.filter(e => e.fid).map(e => e.fid))]
+    .sort((a, b) => flightWindow(flightById(a))[0] - flightWindow(flightById(b))[0]);
+  if (state.logFilter && !fids.includes(state.logFilter)) state.logFilter = null;
+  const filterBar = '<div class="log-filter"><span class="lf' + (!state.logFilter ? ' on' : '') + '" onclick="setLogFilter(null)">All events</span>' +
+    fids.map(fid => '<span class="lf' + (state.logFilter === fid ? ' on' : '') + '" onclick="setLogFilter(\'' + fid + '\')">' + disName(flightById(fid)) + '</span>').join('') + '</div>';
+
+  const entries = state.logFilter ? state.changeLog.filter(e => e.fid === state.logFilter) : state.changeLog;
+  const list = entries.length
+    ? '<div class="chg-list">' + entries.map(changeRow).join('') + '</div>'
+    : '<p class="cap">No events for this flight.</p>';
+  el.innerHTML = summary + filterBar + list;
+}
+
+function changeRow(e) {
+  const labels = { assign: 'Assigned', escalate: 'Escalated', ack: 'Acknowledged', supersede: 'Re-stand', restore: 'Restored', undo: 'Reverted', inject: 'Picture change', accept: 'Plan accepted' };
+  const expandable = !!e.fid;
+  const open = state.expandedSeq === e.seq;
+  const fl = e.fid ? '<b>' + disName(flightById(e.fid)) + '</b>' : '<span class="band">system</span>';
+  const standTxt = (e.stand && e.stand !== 'ESC') ? ' &rarr; ' + e.stand : '';
+  const isDepEsc = e.action === 'escalate' && e.stand == null;
+  const canUndo = ((e.action === 'assign' || e.action === 'escalate') && state.committed[e.fid] === e.stand) || (isDepEsc && !!state.escalations[e.fid]);
+  const undoFn = isDepEsc ? 'undoDepEscalation' : 'undoCommit';
+  const undo = canUndo ? '<button class="chg-undo" onclick="event.stopPropagation(); ' + undoFn + '(\'' + e.fid + '\')">Undo</button>' : '<span></span>';
+  const chev = expandable ? '<span class="chev">&#9656;</span>' : '<span></span>';
+  const row = '<div class="chg-row ' + e.action + (expandable ? ' clickable' : '') + (open ? ' open' : '')+ '"' +
+    (expandable ? ' onclick="toggleExpand(' + e.seq + ')"' : '') + '>' + chev +
+    '<span class="ct">' + fmt(e.t) + '</span>' +
+    '<span class="cf"><span class="act-pill ' + e.action + '">' + (labels[e.action] || e.action) + '</span></span>' +
+    '<span class="cr">' + fl + standTxt + ' <span class="reason">' + (e.reason || '') + '</span></span>' + undo + '</div>';
+  return row + (open && e.fid ? flightTimelineHtml(e.fid) : '');
+}
+
+function toggleExpand(seq) { state.expandedSeq = state.expandedSeq === seq ? null : seq; renderChanges(); }
+
+// A flight's full life in this window: scheduled and ML-predicted on-block,
+// then every decision logged against it, in time order.
+function flightTimeline(fid) {
+  const f = flightById(fid);
+  const rows = [{ t: f.schedOn, kind: 'sched', main: 'Scheduled on-block', sub: '' }];
+  const delay = f.predOn - f.schedOn;
+  rows.push({ t: BASE_NOW, kind: 'pred', main: 'Predicted on-block ' + fmt(f.predOn),
+    sub: delay ? (delay > 0 ? '+' : '') + delay + ' min' + (f.predBand ? ', ±' + f.predBand + 'm' : '') : 'on schedule' });
+  state.changeLog.filter(e => e.fid === fid).forEach(e => rows.push({ t: e.t, seq: e.seq, ...timelineLabel(e) }));
+  return rows.sort((a, b) => (a.t - b.t) || ((a.seq || 0) - (b.seq || 0)));
+}
+
+function timelineLabel(e) {
+  if (e.action === 'assign') return { kind: 'assign', main: 'Assigned ' + e.stand, sub: e.reason };
+  if (e.action === 'escalate') return { kind: 'escalate', main: 'Escalated', sub: e.reason };
+  if (e.action === 'ack') return { kind: 'ack', main: 'Acknowledged', sub: e.reason };
+  if (e.action === 'supersede') return { kind: 'supersede', main: e.stand + ' superseded', sub: e.reason };
+  if (e.action === 'restore') return { kind: 'restore', main: e.stand + ' restored', sub: e.reason };
+  if (e.action === 'undo') return { kind: 'undo', main: 'Returned to queue', sub: e.reason };
+  return { kind: e.action, main: e.reason, sub: '' };
+}
+
+function flightTimelineHtml(fid) {
+  const f = flightById(fid);
+  const route = f.from ? f.from + ' &rarr; CPH' : 'CPH &rarr; ' + f.to;
+  const rows = flightTimeline(fid).map(r =>
+    '<div class="ctl-row"><span class="ctl-t">' + fmt(r.t) + '</span><span class="ctl-dot ' + r.kind + '"></span>' +
+    '<span class="ctl-x"><b>' + r.main + '</b>' + (r.sub ? ' <small>' + r.sub + '</small>' : '') + '</span></div>').join('');
+  return '<div class="chg-detail"><div class="ctl-head"><b>' + disName(f) + '</b> &middot; ' + f.carrier + ' &middot; ' +
+    route + ' &middot; ' + f.ac + ' &middot; full history</div><div class="ctl">' + rows + '</div></div>';
+}
+
+/* ------------------------- optimizer (MIP) -------------------------
+   Whole-apron assignment as a binary program, solved by glpk.js (GLPK
+   via WebAssembly). Variable x[flight,stand] = 1 if the flight takes
+   that stand. Hard constraints: each flight gets exactly one option,
+   one aircraft per stand at overlapping times. Soft costs are weighted
+   into the objective. An escalate option keeps the model feasible when
+   no stand fits, surfacing redirect or cancel candidates.
+------------------------------------------------------------------- */
+const CODE_NUM = { A: 1, B: 2, C: 3, D: 4, E: 5, F: 6 };
+/* Governed, tunable policy constants (Config tab). Defaults reproduce the
+   verified base solve. Changing any of these re-runs the optimization. */
+const CONFIG = {
+  weights: { passenger: 1, handler: 1, schedule: 1 },  // objective trade-off
+  escalateCost: 10000,    // dummy cost of escalating a flight (no feasible stand)
+  confBuffer: 0,          // minutes of separation enforced between aircraft on a stand
+  bandBufferK: 0,         // Phase D: extra separation per minute of combined arrival-time uncertainty
+  stabilityPenalty: 30,   // Phase G: cost of moving an already-committed flight on a rolling re-solve
+  remotePenalty: 40,      // schedule cost for using a remote stand
+  sizeGapPenalty: 8,      // schedule cost per code the stand is larger than the aircraft
+  allowTow: false,        // Phase C: tow a long-dwell aircraft to remote to free a contact stand
+  towCost: 20,            // Phase C: objective points for one tow (tug, crew, time)
+  tugFleet: 4,            // Phase C: shared tug resource for tows and remote servicing
+  busFleet: 4,            // Phase C: shared bus resource for remote boarding
+  unit: { connection: 250, tow: 600, busTrip: 120, contactHour: 400 }, // Phase E: euro unit costs (assumptions)
+};
+const CONFIG_DEFAULTS = JSON.parse(JSON.stringify(CONFIG));
+const DEFAULT_WEIGHTS = CONFIG.weights;   // live reference; mutated via the Config tab
+let lastSolve = null;
+
+/* Ground handlers stage crews and equipment in apron zones; servicing a stand
+   far from a handler's base means longer drive times and more vehicle cycles,
+   a real strain. apronX is a coarse west-to-east position; the base is each
+   handler's home zone. This makes handler load genuinely stand-dependent, so
+   "protect handlers" trades off against passenger walking distance. */
+const HANDLER_BASE = { Aviator: 6, Menzies: 4, SGH: 1 };
+function apronX(s) { const c = s.id[0]; return c === 'A' ? 1 : c === 'B' ? 2 : c === 'E' ? 3 : c === 'C' ? 4 : 6; }
+
+const DEP_LEAD = 30; // a departure sits on its stand this many minutes before off-block
+function flightWindow(f) { return [f.predOn, f.predOn + (f.dwell || 45)]; }
+function overlaps(a0, a1, b0, b1) { return a0 < b1 && b0 < a1; }
+function overlapsBuf(a0, a1, b0, b1) { const buf = CONFIG.confBuffer || 0; return a0 < b1 + buf && b0 < a1 + buf; }
+function overlapsBy(a0, a1, b0, b1, buf) { return a0 < b1 + buf && b0 < a1 + buf; }
+
+/* Phase D: separation enforced between two aircraft on a stand. A fixed buffer plus a
+   share of their combined arrival-time uncertainty, so tight-band flights pack closer
+   and wide-band flights get more slack. Defaults (both 0) reproduce strict no-overlap. */
+function pairBuffer(a, b) {
+  return (CONFIG.confBuffer || 0) + (CONFIG.bandBufferK || 0) * ((a.predBand || 0) + (b.predBand || 0));
+}
+
+/* Phase C: a towable aircraft deboards on its contact stand, is towed to a remote
+   parking position for the parked middle of its dwell, then returns to the contact
+   stand to board. The contact stand is free during the parked phase, so another
+   aircraft can use it. Only long-dwell aircraft are worth the tug movement. */
+const TOW_DEBOARD = 15, TOW_BOARD = 20, MIN_TOW_DWELL = 50;
+const TUG_OVERFLOW_COST = 50, BUS_OVERFLOW_COST = 40; // soft cost per movement over fleet
+function isTowable(f) { return (f.dir || 'arr') === 'arr' && (f.dwell || 45) >= MIN_TOW_DWELL; }
+function towSlivers(f) {
+  const on = f.predOn, dw = f.dwell || 45;
+  return { deboard: [on, on + TOW_DEBOARD], park: [on + TOW_DEBOARD, on + dw - TOW_BOARD], board: [on + dw - TOW_BOARD, on + dw] };
+}
+// Towing f frees the middle of its contact occupancy; the conflict with `other`
+// survives only if other still overlaps f's short deboard or board slivers.
+function towBreaksOverlap(f, other) {
+  const [o0, o1] = flightWindow(other); const sl = towSlivers(f);
+  return !(overlaps(o0, o1, sl.deboard[0], sl.deboard[1]) || overlaps(o0, o1, sl.board[0], sl.board[1]));
+}
+
+// Stand-occupancy window for any non-reallocated flight: arrivals on-block to off-block,
+// departures the pre-departure period on stand. Used as a hard availability constraint.
+function occWindowOf(g) {
+  return g.dir === 'dep' ? [g.predOn - DEP_LEAD, g.predOn] : [g.predOn, g.predOn + (g.dwell || 45)];
+}
+function nonReallocOnStand(standId) {
+  return FLIGHTS.filter(g => !g.needsRealloc && (g.stand === standId || (g.dir === 'dep' && g.plannedStand === standId)));
+}
+
+function standBlockedFor(standId, f) {
+  const [fs, fe] = flightWindow(f);
+  return nonReallocOnStand(standId).some(g => { const [gs, ge] = occWindowOf(g); return overlapsBy(fs, fe, gs, ge, pairBuffer(f, g)); });
+}
+
+function isEligible(f, s) {
+  if (isStandOOS(s)) return false;
+  if (CODE_NUM[s.code] < CODE_NUM[f.code]) return false;   // stand too small
+  if (standBlockedFor(s.id, f)) return false;              // settled aircraft holds it then
+  return true;
+}
+
+function handlerLoadFactor(handlerId) {
+  const rf = reallocFlights();
+  const winStart = Math.min(...rf.map(f => flightWindow(f)[0]));
+  const winEnd = Math.max(...rf.map(f => flightWindow(f)[1]));
+  const base = FLIGHTS.filter(g => g.handler === handlerId && !g.needsRealloc && g.stand &&
+    overlaps(winStart, winEnd, flightWindow(g)[0], flightWindow(g)[1])).length;
+  return base / handlerCapacity(handlerId);
+}
+
+function costParts(f, s) {
+  const remote = s.type === 'remote';
+  const sizeGap = CODE_NUM[s.code] - CODE_NUM[f.code];
+  const passenger = (f.pax / 100) * s.walk + (remote ? f.conPax * 0.4 : 0);
+  let schedule = (remote ? CONFIG.remotePenalty : 0) + sizeGap * CONFIG.sizeGapPenalty;
+  if (!remote && s.zone !== 'M' && s.zone !== f.zone) schedule += 25; // forced zone change
+  const handler = handlerLoadFactor(f.handler) * (remote ? 20 : 6) * (f.pax / 150)
+    + Math.abs(apronX(s) - HANDLER_BASE[f.handler]) * 1.5;
+  return { passenger, schedule, handler };
+}
+
+function weightedCost(parts, w) {
+  return w.passenger * parts.passenger + w.handler * parts.handler + w.schedule * parts.schedule;
+}
+
+function buildModel(weights, glpk, opts) {
+  const flights = reallocFlights();
+  const objVars = [], binaries = [], subjectTo = [];
+  let conflictCount = 0;
+  const tow = CONFIG.allowTow;                                   // Phase C gate: off -> base model byte-identical
+  const towable = new Set(tow ? flights.filter(isTowable).map(f => f.id) : []);
+  const stab = opts && opts.stability;                          // Phase G: keep committed stands unless a move pays off
+
+  flights.forEach(f => {
+    const assignVars = [];
+    STANDS.filter(s => isEligible(f, s)).forEach(s => {
+      const v = 'x__' + f.id + '__' + s.id;
+      let coef = weightedCost(costParts(f, s), weights);
+      if (stab && stab[f.id] && stab[f.id] !== s.id) coef += CONFIG.stabilityPenalty;  // moving a committed flight costs
+      objVars.push({ name: v, coef });
+      binaries.push(v);
+      assignVars.push({ name: v, coef: 1 });
+    });
+    const esc = 'x__' + f.id + '__ESC';
+    objVars.push({ name: esc, coef: CONFIG.escalateCost });
+    binaries.push(esc);
+    assignVars.push({ name: esc, coef: 1 });
+    subjectTo.push({ name: 'assign_' + f.id, vars: assignVars, bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 } });
+  });
+
+  // Phase C: tow binaries. tow[f] can be 1 only if f takes a contact stand.
+  if (tow) flights.filter(f => towable.has(f.id)).forEach(f => {
+    const tv = 'tow__' + f.id;
+    binaries.push(tv);
+    objVars.push({ name: tv, coef: CONFIG.towCost });
+    const contactX = STANDS.filter(s => s.type === 'contact' && isEligible(f, s)).map(s => ({ name: 'x__' + f.id + '__' + s.id, coef: -1 }));
+    subjectTo.push(contactX.length
+      ? { name: 'towlink_' + f.id, vars: [{ name: tv, coef: 1 }, ...contactX], bnds: { type: glpk.GLP_UP, ub: 0, lb: 0 } }
+      : { name: 'towlink_' + f.id, vars: [{ name: tv, coef: 1 }], bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 } });
+  });
+
+  STANDS.forEach(s => {
+    const cands = flights.filter(f => isEligible(f, s));
+    for (let i = 0; i < cands.length; i++) {
+      for (let j = i + 1; j < cands.length; j++) {
+        const [a0, a1] = flightWindow(cands[i]);
+        const [b0, b1] = flightWindow(cands[j]);
+        if (overlapsBy(a0, a1, b0, b1, pairBuffer(cands[i], cands[j]))) {
+          const vars = [{ name: 'x__' + cands[i].id + '__' + s.id, coef: 1 }, { name: 'x__' + cands[j].id + '__' + s.id, coef: 1 }];
+          // Towing a contact-stand aircraft can free the stand's middle and break this conflict.
+          if (tow && s.type === 'contact') {
+            if (towable.has(cands[i].id) && towBreaksOverlap(cands[i], cands[j])) vars.push({ name: 'tow__' + cands[i].id, coef: -1 });
+            if (towable.has(cands[j].id) && towBreaksOverlap(cands[j], cands[i])) vars.push({ name: 'tow__' + cands[j].id, coef: -1 });
+          }
+          subjectTo.push({ name: 'conf_' + s.id + '_' + cands[i].id + '_' + cands[j].id, vars, bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 } });
+          conflictCount++;
+        }
+      }
+    }
+  });
+
+  // Phase C: tug and bus capacity. Each tow needs a tug; each remote-serviced aircraft
+  // (towed-and-parked or assigned directly to a remote stand) needs a bus. When demand
+  // exceeds the fleet, a soft overflow cost rises.
+  let bounds;
+  if (tow) {
+    bounds = [];
+    const tugVars = [], busVars = [];
+    flights.filter(f => towable.has(f.id)).forEach(f => { tugVars.push({ name: 'tow__' + f.id, coef: -1 }); busVars.push({ name: 'tow__' + f.id, coef: -1 }); });
+    flights.forEach(f => STANDS.filter(s => s.type === 'remote' && isEligible(f, s)).forEach(s => busVars.push({ name: 'x__' + f.id + '__' + s.id, coef: -1 })));
+    if (tugVars.length) {
+      objVars.push({ name: 'tugOver', coef: TUG_OVERFLOW_COST });
+      bounds.push({ name: 'tugOver', type: glpk.GLP_LO, lb: 0, ub: 0 });
+      subjectTo.push({ name: 'tugcap', vars: [{ name: 'tugOver', coef: 1 }, ...tugVars], bnds: { type: glpk.GLP_LO, ub: 0, lb: -CONFIG.tugFleet } });
+    }
+    if (busVars.length) {
+      objVars.push({ name: 'busOver', coef: BUS_OVERFLOW_COST });
+      bounds.push({ name: 'busOver', type: glpk.GLP_LO, lb: 0, ub: 0 });
+      subjectTo.push({ name: 'buscap', vars: [{ name: 'busOver', coef: 1 }, ...busVars], bnds: { type: glpk.GLP_LO, ub: 0, lb: -CONFIG.busFleet } });
+    }
+  }
+
+  return { objVars, binaries, subjectTo, conflictCount, varCount: binaries.length, towables: [...towable], bounds };
+}
+
+// Which flights the solver chose to tow, read back from the solution.
+function towedFromRes(res) {
+  const set = new Set();
+  reallocFlights().forEach(f => { if (res.result.vars['tow__' + f.id] > 0.5) set.add(f.id); });
+  return set;
+}
+
+async function runOptimization() {
+  const btn = document.getElementById('optBtn');
+  btn.disabled = true; btn.textContent = 'Solving…';
+  try {
+    const glpk = await window.__glpkReady;
+    const model = buildModel(DEFAULT_WEIGHTS, glpk);
+    const lp = {
+      name: 'apron',
+      objective: { direction: glpk.GLP_MIN, name: 'cost', vars: model.objVars },
+      subjectTo: model.subjectTo,
+      binaries: model.binaries
+    };
+    if (model.bounds) lp.bounds = model.bounds;
+    const t0 = Date.now();
+    const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+    const ms = Date.now() - t0;
+    const towed = towedFromRes(res);
+    lastSolve = { res, model, ms, towed };
+    renderSolveMeta(res, model, ms, glpk);
+    renderAllocationInto('optResult', allocFromRes(res), towed);
+    renderRobust(allocFromRes(res), towed);
+    renderValuePanel('optValue', allocFromRes(res), towed);
+    const stale = document.getElementById('optStale'); if (stale) stale.innerHTML = '';  // a just-computed plan is current
+    document.getElementById('optAcceptBtn').style.display = 'inline-block';
+  } catch (e) {
+    console.error(e);
+    document.getElementById('optResult').innerHTML = '<p class="empty">Solver error: ' + (e.message || e) + '</p>';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Re-run apron optimization';
+  }
+}
+
+/* Phase G: rolling horizon. Advance the clock and re-solve, seeded from the committed
+   picture with a stability term so already-committed stands are kept unless a move beats
+   the stability penalty. This prevents the plan from thrashing on every re-optimization. */
+async function rollingReoptimize() {
+  const committed = {};
+  committedEntries().forEach(e => { if (e.stand && e.stand !== 'ESC') committed[e.fid] = e.stand; });
+  if (!Object.keys(committed).length) { runOptimization(); return; }   // nothing committed yet
+  const btn = document.getElementById('rollBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Re-solving…'; }
+  try {
+    state.now = Math.min(1020, state.now + SIM_STEP);
+    const glpk = await window.__glpkReady;
+    const model = buildModel(DEFAULT_WEIGHTS, glpk, { stability: committed });
+    const lp = { name: 'roll', objective: { direction: glpk.GLP_MIN, name: 'cost', vars: model.objVars }, subjectTo: model.subjectTo, binaries: model.binaries };
+    if (model.bounds) lp.bounds = model.bounds;
+    const t0 = Date.now();
+    const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+    const ms = Date.now() - t0;
+    const towed = towedFromRes(res), alloc = allocFromRes(res);
+    lastSolve = { res, model, ms, towed };
+    let held = 0, changed = 0;
+    reallocFlights().forEach(f => { const c = committed[f.id]; if (c) { (alloc[f.id] === c ? held++ : changed++); } });
+    render();                          // advances the clock and dependent views (renders optResult, robustness, value)
+    renderSolveMeta(res, model, ms, glpk);
+    document.getElementById('optStale').innerHTML = '<div class="roll-note">Rolling re-optimization at <b>' + fmt(state.now) +
+      '</b>. Re-solved from the committed picture: <b>' + held + '</b> stand' + (held !== 1 ? 's' : '') + ' held, <b>' + changed + '</b> moved. ' +
+      'A move has to beat the stability penalty (' + CONFIG.stabilityPenalty + '), so with no new arrival information the committed plan stays put by design. On the live feed, only a material change re-stands a flight.</div>';
+    document.getElementById('optAcceptBtn').style.display = 'inline-block';
+    showTab('optimize');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Advance 5 min and re-optimize'; }
+  }
+}
+
+function statusLabel(status, glpk) {
+  if (status === glpk.GLP_OPT) return 'Optimal';
+  if (status === glpk.GLP_FEAS) return 'Feasible';
+  if (status === glpk.GLP_NOFEAS) return 'No feasible solution';
+  if (status === glpk.GLP_INFEAS) return 'Infeasible';
+  if (status === glpk.GLP_UNBND) return 'Unbounded';
+  return 'Undefined';
+}
+
+function renderSolveMeta(res, model, ms, glpk) {
+  const m = document.getElementById('solveMeta');
+  const escs = reallocFlights().filter(f => res.result.vars['x__' + f.id + '__ESC'] > 0.5).length;
+  m.className = 'solve-meta show';
+  m.innerHTML =
+    '<span class="chip ok">Status <b>' + statusLabel(res.result.status, glpk) + '</b></span>' +
+    '<span class="chip">Objective <b>' + res.result.z.toFixed(1) + '</b></span>' +
+    '<span class="chip">Solve time <b>' + ms + ' ms</b></span>' +
+    '<span class="chip">Binary vars <b>' + model.varCount + '</b></span>' +
+    '<span class="chip">Constraints <b>' + model.subjectTo.length + '</b></span>' +
+    '<span class="chip">Time conflicts <b>' + model.conflictCount + '</b></span>' +
+    (escs ? '<span class="chip"><b>' + escs + '</b> escalation candidate' + (escs > 1 ? 's' : '') + '</span>' : '') +
+    towMeta(res);
+}
+
+// Phase C solver readout: tows chosen and any tug/bus fleet saturation.
+function towMeta(res) {
+  if (!CONFIG.allowTow) return '';
+  const tows = reallocFlights().filter(f => res.result.vars['tow__' + f.id] > 0.5).length;
+  const tugOver = Math.round(res.result.vars.tugOver || 0);
+  const busOver = Math.round(res.result.vars.busOver || 0);
+  return '<span class="chip">Tows <b>' + tows + '</b> / tug ' + CONFIG.tugFleet + '</span>' +
+    (tugOver > 0 ? '<span class="chip warn"><b>' + tugOver + '</b> tug over fleet</span>' : '') +
+    (busOver > 0 ? '<span class="chip warn"><b>' + busOver + '</b> bus over fleet</span>' : '');
+}
+
+function allocFromRes(res) {
+  const map = {};
+  reallocFlights().forEach(f => {
+    let a = 'ESC';
+    for (const s of STANDS) { if (res.result.vars['x__' + f.id + '__' + s.id] > 0.5) { a = s.id; break; } }
+    map[f.id] = a;
+  });
+  return map;
+}
+
+function renderAllocationInto(elId, alloc, towed) {
+  towed = towed || new Set();
+  const rows = reallocFlights().map(f => {
+    const sid = alloc[f.id];
+    const assigned = (sid && sid !== 'ESC') ? standById(sid) : null;
+    const zoneTxt = f.zone === 'S' ? 'Schengen' : f.zone === 'N' ? 'Non-Schengen' : 'Mixed';
+    if (!assigned) {
+      return '<tr class="realloc"><td><b>' + disName(f) + '</b><br><span class="band">' + f.carrier + ' · ' + f.ac + ' · ' + f.code + '</span></td>' +
+        '<td colspan="2"><span class="pill crit">Escalate · no feasible stand</span></td>' +
+        '<td>' + f.handler + '</td><td colspan="2" class="cost-cell">Redirect or cancel review with airline and ATC</td></tr>';
+    }
+    const p = costParts(f, assigned);
+    const total = weightedCost(p, DEFAULT_WEIGHTS);
+    const remote = assigned.type === 'remote';
+    const invalid = isStandOOS(assigned);
+    const isTowed = towed.has(f.id);
+    const sl = isTowed ? towSlivers(f) : null;
+    const standPill = invalid ? '<span class="pill crit">No longer valid</span>'
+      : remote ? '<span class="pill warn">Remote</span>' : '<span class="pill pos">Contact</span>';
+    const towPill = isTowed ? ' <span class="pill tow">Tow → remote</span>' : '';
+    const towNote = isTowed ? '<br><span class="ac tow-note">frees ' + assigned.id + ' ' + fmt(sl.park[0]) + '–' + fmt(sl.park[1]) + ', bus boarding</span>' : '';
+    return '<tr' + (invalid ? ' class="realloc"' : '') + '><td><b>' + disName(f) + '</b><br><span class="band">' + f.carrier + ' · ' + f.ac + ' · ' + f.code + ' · ' + zoneTxt + '</span></td>' +
+      '<td class="assigned"><b>' + assigned.id + '</b> ' + standPill + towPill + '<br><span class="ac">' + assigned.belt + ' · walk ' + assigned.walk + 'm</span>' + towNote + '</td>' +
+      '<td>' + f.pax + ' pax<br><span class="band">' + f.conPax + ' connecting</span></td>' +
+      '<td>' + f.handler + '</td>' +
+      '<td class="cost-cell"><b>' + total.toFixed(1) + '</b></td>' +
+      '<td class="cost-split">pax ' + p.passenger.toFixed(0) + ' · hdl ' + p.handler.toFixed(0) + ' · sch ' + p.schedule.toFixed(0) + '</td></tr>';
+  }).join('');
+  document.getElementById(elId).innerHTML =
+    '<table class="data"><thead><tr><th>Flight</th><th>Assigned stand</th><th>Load</th><th>Handler</th><th>Cost</th><th>Breakdown</th></tr></thead><tbody>' +
+    rows + '</tbody></table>';
+}
+
+// Keep the displayed optimize plan in sync with the live picture: if the
+// conditions changed since it was computed, re-render it (now flagging any
+// stand that went out of service) and show a stale banner prompting a re-run.
+function renderOptimizePlan() {
+  if (!lastSolve || !document.getElementById('optResult')) return;
+  const alloc = allocFromRes(lastSolve.res);
+  renderAllocationInto('optResult', alloc, lastSolve.towed);
+  renderRobust(alloc, lastSolve.towed);
+  renderValuePanel('optValue', alloc, lastSolve.towed);
+  const bad = [...new Set(reallocFlights().map(f => alloc[f.id]).filter(sid => sid && sid !== 'ESC' && isStandOOS(standById(sid))))];
+  const el = document.getElementById('optStale');
+  if (el) el.innerHTML = bad.length
+    ? '<div class="stale-banner">This plan was computed before the picture changed. ' + bad.join(' and ') +
+      ' ' + (bad.length > 1 ? 'are' : 'is') + ' now out of service, so the plan is no longer valid. Re-run the optimization.</div>'
+    : '';
+}
+
+/* ------------------------- Phase D: robustness -------------------------
+   The plan is built against predicted on-block times. Real arrivals land within
+   an uncertainty band. A Monte Carlo over a few hundred draws within each band
+   reports how often the committed plan stays conflict-free, and which stands are
+   fragile. A wider conflict buffer trades stand utilisation for robustness.
+--------------------------------------------------------------------- */
+function mulberry32(seed) {
+  return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
+function robustness(alloc, towed, draws) {
+  draws = draws || 300; towed = towed || new Set();
+  const rng = mulberry32(20260612);   // fixed seed: the score is stable for a given plan
+  const flights = reallocFlights().filter(f => { const sid = alloc[f.id]; return sid && sid !== 'ESC'; });
+  const settled = FLIGHTS.filter(g => !g.needsRealloc && (g.stand || g.plannedStand));
+  let holds = 0; const fragile = {};
+  for (let d = 0; d < draws; d++) {
+    const byStand = {};
+    flights.forEach(f => {
+      const on = f.predOn + (rng() * 2 - 1) * (f.predBand || 0);
+      const dw = f.dwell || 45;
+      const intervals = towed.has(f.id) ? [[on, on + TOW_DEBOARD], [on + dw - TOW_BOARD, on + dw]] : [[on, on + dw]];
+      (byStand[alloc[f.id]] = byStand[alloc[f.id]] || []).push(intervals);
+    });
+    settled.forEach(g => { const sid = g.stand || g.plannedStand; (byStand[sid] = byStand[sid] || []).push([occWindowOf(g)]); });
+    let clean = true;
+    Object.keys(byStand).forEach(sid => {
+      const list = byStand[sid]; let hit = false;
+      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++)
+        if (list[i].some(a => list[j].some(b => overlaps(a[0], a[1], b[0], b[1])))) hit = true;
+      if (hit) { clean = false; fragile[sid] = (fragile[sid] || 0) + 1; }
+    });
+    if (clean) holds++;
+  }
+  return { score: holds / draws, draws, fragile };
+}
+
+function renderRobust(alloc, towed) {
+  const el = document.getElementById('optRobust'); if (!el) return;
+  const r = robustness(alloc, towed);
+  const pct = Math.round(r.score * 100);
+  const cls = pct >= 90 ? 'ok' : pct >= 70 ? 'mid' : 'low';
+  const frag = Object.entries(r.fragile).filter(([s, c]) => c / r.draws > 0.05).sort((a, b) => b[1] - a[1]);
+  el.innerHTML = '<div class="panel"><h4>Plan robustness <span class="band">Monte Carlo, ' + r.draws + ' arrival-time draws within each flight\'s uncertainty band</span></h4>' +
+    '<p class="robust-score ' + cls + '">Holds in <b>' + pct + '%</b> of scenarios</p>' +
+    (frag.length
+      ? '<p class="cap">Fragile stands, conflict in some draws: ' + frag.map(([s, c]) => '<b>' + s + '</b> ' + Math.round(c / r.draws * 100) + '%').join(', ') + '. Widen the conflict buffer or the uncertainty factor in Config to harden these.</p>'
+      : '<p class="cap">No fragile stands at the current buffer.</p>') + '</div>';
+}
+
+/* --------------------------- Phase E: value ---------------------------
+   The business case, bottom-up, against the first-come-first-served baseline an
+   incumbent rule engine would run. Each driver times a configurable unit cost
+   (Config, labelled an assumption). The figure tracks the active allocation.
+--------------------------------------------------------------------- */
+function planMetrics(alloc) {
+  let remote = 0, contactHours = 0; const escFids = new Set();
+  reallocFlights().forEach(f => {
+    const sid = alloc[f.id];
+    if (!sid || sid === 'ESC') { escFids.add(f.id); return; }   // stranded: diverted or cancelled
+    if (standById(sid).type === 'remote') remote++; else contactHours += (f.dwell || 45) / 60;
+  });
+  return { remote, contactHours, escFids };
+}
+
+function computeValue(alloc, towed) {
+  const our = planMetrics(alloc);
+  const base = planMetrics(fcfsAlloc());
+  const u = CONFIG.unit;
+  // Connecting passengers on flights the naive rule strands but this plan keeps in operation.
+  let connProtected = 0;
+  reallocFlights().forEach(f => { if (base.escFids.has(f.id) && !our.escFids.has(f.id)) connProtected += f.conPax || 0; });
+  const busAvoided = Math.max(0, base.remote - our.remote);
+  const contactGained = Math.max(0, our.contactHours - base.contactHours);
+  const tows = (towed || new Set()).size;
+  const items = [
+    { label: 'Protected connections', n: connProtected, unit: u.connection, sub: connProtected * u.connection, sign: 1 },
+    { label: 'Bus trips avoided', n: busAvoided, unit: u.busTrip, sub: busAvoided * u.busTrip, sign: 1 },
+    { label: 'Contact-stand-hours gained', n: Math.round(contactGained * 10) / 10, unit: u.contactHour, sub: contactGained * u.contactHour, sign: 1 },
+    { label: 'Tow movements', n: tows, unit: u.tow, sub: tows * u.tow, sign: -1 },
+  ];
+  const total = items.reduce((a, it) => a + it.sign * it.sub, 0);
+  return { items, total };
+}
+
+function eur(n) { return '€' + Math.round(n).toLocaleString('en-US'); }
+
+function renderValuePanel(elId, alloc, towed) {
+  const el = document.getElementById(elId); if (!el) return;
+  const v = computeValue(alloc, towed);
+  const lines = v.items.map(it => '<tr><td>' + it.label + '</td><td class="vn">' + it.n + ' &times; ' + eur(it.unit) + '</td>' +
+    '<td class="vv ' + (it.sign < 0 ? 'neg' : '') + '">' + (it.sign < 0 ? '&minus;' : '+') + eur(it.sub) + '</td></tr>').join('');
+  el.innerHTML = '<div class="panel"><h4>Business value <span class="band">this plan versus the naive first-come-first-served rule an incumbent allocator would run</span></h4>' +
+    '<table class="value-tbl"><tbody>' + lines +
+    '<tr class="vtot"><td>Net value of this plan</td><td></td><td class="vv">' + eur(v.total) + '</td></tr></tbody></table>' +
+    '<p class="cap">Unit costs are assumptions set in the Config tab, not calibrated figures.</p></div>';
+}
+
+/* ===================== Value tab: cost over time, four policies =====================
+   The same disruption reality (a stand fault, E30 and C26) is fed to four operating
+   policies. Base does nothing; A optimizes once on the initial picture and is blind to
+   the fault; B re-optimizes on the current picture; C re-optimizes and shifts weight to
+   the binding resource. The digital twin judges every policy against full reality, and
+   the cost is integrated over the afternoon in euros. Drivers and units are assumptions. */
+const VALUE = { eurDelayMin: 100, eurReaccom: 40 };   // delay-minute (EUROCONTROL ref); per-pax reaccommodation
+const VALUE_CASES = [
+  { id: 'base', label: 'Base · do nothing', color: '#c4bfbb' },
+  { id: 'A', label: 'A · optimize once', color: '#88a8ed' },
+  { id: 'B', label: 'B · keep optimizing', color: '#4e55ab' },
+  { id: 'C', label: 'C · optimize + adapt', color: '#170d81' },
+];
+let valueResult = null, valueMode = 'cum', valueMC = null;
+
+async function valueSolve(weights, disrupt) {
+  const glpk = await window.__glpkReady;
+  const saved = state.disruptions;
+  state.disruptions = { standFaults: false, handlerShortage: false, standCrunch: false, ...disrupt };
+  try {
+    const m = buildModel(weights, glpk);
+    const lp = { name: 'v', objective: { direction: glpk.GLP_MIN, name: 'c', vars: m.objVars }, subjectTo: m.subjectTo, binaries: m.binaries };
+    if (m.bounds) lp.bounds = m.bounds;
+    const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+    return { alloc: allocFromRes(res), towed: towedFromRes(res) };
+  } finally { state.disruptions = saved; }
+}
+
+function valueBaseAlloc() {   // each flight on its planned stand, no optimization
+  const a = {}; reallocFlights().forEach(f => { a[f.id] = f.plannedStand || 'ESC'; }); return a;
+}
+
+// Weights that emphasise whichever reallocation-relievable resource is closest to saturating.
+function bindingWeights(sim) {
+  const qPeak = Math.max(0, ...sim.steps.map(s => Math.max(s.qN / PASSPORT_CAP.N, s.qS / PASSPORT_CAP.S)));
+  const sched = sim.slips / Math.max(1, reallocFlights().length);
+  const binding = qPeak >= sched ? 'passenger' : 'schedule';
+  const w = { passenger: 1, handler: 1, schedule: 1 }; w[binding] = 3;
+  return { weights: w, binding };
+}
+
+// Cost events for one policy, judged against full reality (the stand fault active).
+function valueCostEvents(alloc, towed) {
+  const saved = state.disruptions;
+  state.disruptions = { standFaults: true, handlerShortage: false, standCrunch: false };
+  const u = CONFIG.unit, events = [];
+  try {
+    const realAlloc = {}, stranded = new Set();
+    reallocFlights().forEach(f => {
+      const sid = alloc[f.id], s = sid && sid !== 'ESC' ? standById(sid) : null;
+      if (!s || isStandOOS(s) || CODE_NUM[s.code] < CODE_NUM[f.code]) {
+        stranded.add(f.id); realAlloc[f.id] = 'ESC';
+        events.push({ t: f.predOn, eur: (f.conPax || 0) * u.connection + (f.pax || 0) * VALUE.eurReaccom, kind: 'strand' });
+      } else realAlloc[f.id] = sid;
+    });
+    const realTowed = new Set([...(towed || [])].filter(id => !stranded.has(id)));
+    const sim = simulateTwin(realAlloc, realTowed);
+    reallocFlights().forEach(f => {
+      const sid = realAlloc[f.id]; if (sid === 'ESC') return;
+      if (standById(sid).type === 'remote') events.push({ t: f.predOn, eur: u.busTrip, kind: 'bus' });
+      if (realTowed.has(f.id)) events.push({ t: f.predOn, eur: u.tow, kind: 'tow' });
+    });
+    (sim.riskFlights || []).forEach(r => { if (!stranded.has(r.fid)) events.push({ t: r.t, eur: (r.conPax || 0) * u.connection, kind: 'conn' }); });
+    sim.occ.filter(o => o.extended > 0 && o.dir === 'arr').forEach(o => events.push({ t: o.baseEnd, eur: o.extended * VALUE.eurDelayMin, kind: 'slip' }));
+  } finally { state.disruptions = saved; }
+  events.sort((a, b) => a.t - b.t);
+  return events;
+}
+
+// Cumulative and per-step euro curves sampled at the twin's time steps.
+function valueCurve(events) {
+  const xs = []; for (let t = SIM_T0; t <= SIM_T1; t += SIM_STEP) xs.push(t);
+  let run = 0, i = 0; const cum = [], rate = [];
+  xs.forEach(t => { let e = 0; while (i < events.length && events[i].t <= t) { run += events[i].eur; e += events[i].eur; i++; } cum.push(run); rate.push(e); });
+  return { xs, cum, rate, total: run };
+}
+
+async function valuePolicyAllocs() {
+  const base = { alloc: valueBaseAlloc(), towed: new Set() };
+  const A = await valueSolve(DEFAULT_WEIGHTS, {});                    // initial picture, blind to the fault
+  const B = await valueSolve(DEFAULT_WEIGHTS, { standFaults: true }); // current picture
+  const saved = state.disruptions;
+  state.disruptions = { standFaults: true, handlerShortage: false, standCrunch: false };
+  const bind = bindingWeights(simulateTwin(B.alloc, B.towed));
+  state.disruptions = saved;
+  const C = await valueSolve(bind.weights, { standFaults: true });    // current picture + adapt to binding resource
+  return { policies: { base, A, B, C }, binding: bind.binding };
+}
+
+async function runValueCases() {
+  const btn = document.getElementById('valueBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Computing…'; }
+  try {
+    const { policies, binding } = await valuePolicyAllocs();
+    valueResult = VALUE_CASES.map(c => {
+      const p = policies[c.id], events = valueCostEvents(p.alloc, p.towed);
+      return { ...c, alloc: p.alloc, towed: p.towed, events, curve: valueCurve(events) };
+    });
+    valueResult.binding = binding;
+    valueMC = null;
+    renderValueView();
+  } catch (e) { console.error(e); const el = document.getElementById('valueUI'); if (el) el.innerHTML = '<p class="empty">Compute error: ' + (e.message || e) + '</p>'; }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Recompute cases'; } }
+}
+
+// Monte Carlo: hold the four allocations fixed, vary arrival times within each band, re-cost.
+async function runValueMonteCarlo() {
+  if (!valueResult) return;
+  const btn = document.getElementById('valueMcBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Sampling…'; }
+  const draws = 50, rng = mulberry32(20260612);
+  const orig = {}; reallocFlights().forEach(f => orig[f.id] = f.predOn);
+  const per = valueResult.map(() => ({ cum: [], totals: [] }));
+  try {
+    for (let d = 0; d < draws; d++) {
+      reallocFlights().forEach(f => { f.predOn = orig[f.id] + Math.round((rng() * 2 - 1) * (f.predBand || 0)); });
+      valueResult.forEach((c, ci) => { const cu = valueCurve(valueCostEvents(c.alloc, c.towed)); per[ci].cum.push(cu.cum); per[ci].totals.push(cu.total); });
+    }
+  } finally { reallocFlights().forEach(f => f.predOn = orig[f.id]); if (btn) { btn.disabled = false; btn.textContent = 'Re-run Monte Carlo'; } }
+  const pct = (arr, p) => { const s = arr.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; };
+  const n = valueResult[0].curve.xs.length;
+  valueMC = valueResult.map((c, ci) => {
+    const lo = [], hi = [], mean = [];
+    for (let k = 0; k < n; k++) { const col = per[ci].cum.map(r => r[k]); lo.push(pct(col, 10)); hi.push(pct(col, 90)); mean.push(col.reduce((a, b) => a + b, 0) / col.length); }
+    return { lo, hi, mean, meanTotal: per[ci].totals.reduce((a, b) => a + b, 0) / draws };
+  });
+  const baseTot = per[0].totals, cTot = per[3].totals;
+  valueMC.cBeatsBase = Math.round(cTot.filter((v, i) => v < baseTot[i]).length / draws * 100);
+  valueMC.draws = draws;
+  renderValueView();
+}
+
+function setValueMode(m) { valueMode = m; renderValueView(); }
+
+function renderValueView() {
+  const el = document.getElementById('valueUI'); if (!el) return;
+  if (!valueResult) { el.innerHTML = '<p class="cap">Click <b>Compute value cases</b> to run the four operating policies against the same disruption and chart their cost over the afternoon.</p>'; return; }
+  const metric = valueMode;
+  const W = 900, H = 360, pl = 64, pb = 44, pt = 16, pr = 132;
+  const xs = valueResult[0].curve.xs;
+  const vals = valueResult.flatMap(c => c.curve[metric]).concat(valueMC ? valueMC.flatMap(m => m.hi) : []);
+  const ymax = Math.max(1, ...vals);
+  const sx = t => pl + (t - SIM_T0) / (SIM_T1 - SIM_T0) * (W - pl - pr);
+  const sy = v => (H - pb) - v / ymax * (H - pb - pt);
+  let svg = '';
+  for (let gy = 0; gy <= 4; gy++) { const v = ymax * gy / 4, y = sy(v); svg += '<line x1="' + pl + '" y1="' + y.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + y.toFixed(1) + '" stroke="#eef2fa"/><text x="' + (pl - 8) + '" y="' + (y + 3).toFixed(1) + '" font-size="10" fill="#6b7299" text-anchor="end">' + eur(v) + '</text>'; }
+  for (let tk = SIM_T0; tk <= SIM_T1; tk += 30) svg += '<text x="' + sx(tk).toFixed(1) + '" y="' + (H - pb + 16) + '" font-size="10" fill="#6b7299" text-anchor="middle">' + fmt(tk) + '</text>';
+  if (valueMC) valueResult.forEach((c, ci) => {
+    const m = valueMC[ci]; let up = '', dn = '';
+    xs.forEach((t, k) => { up += sx(t).toFixed(1) + ',' + sy(metric === 'cum' ? m.hi[k] : c.curve.rate[k]).toFixed(1) + ' '; });
+    for (let k = xs.length - 1; k >= 0; k--) up += sx(xs[k]).toFixed(1) + ',' + sy(metric === 'cum' ? m.lo[k] : c.curve.rate[k]).toFixed(1) + ' ';
+    if (metric === 'cum') svg += '<polygon points="' + up + '" fill="' + c.color + '" fill-opacity="0.12"/>';
+  });
+  valueResult.forEach(c => {
+    const pts = xs.map((t, k) => sx(t).toFixed(1) + ',' + sy(c.curve[metric][k]).toFixed(1)).join(' ');
+    svg += '<polyline points="' + pts + '" fill="none" stroke="' + c.color + '" stroke-width="2.4"/>';
+  });
+  svg += '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/><line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/>';
+  svg += '<text x="14" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 14 ' + (H / 2) + ')">' + (metric === 'cum' ? 'Cumulative cost (€)' : 'Cost rate (€ / 5 min)') + '</text>';
+  valueResult.forEach((c, i) => { const ly = pt + 8 + i * 20, lx = W - pr + 12; svg += '<line x1="' + lx + '" y1="' + ly + '" x2="' + (lx + 18) + '" y2="' + ly + '" stroke="' + c.color + '" stroke-width="3"/><text x="' + (lx + 24) + '" y="' + (ly + 4) + '" font-size="11" fill="#1b2350">' + c.label + '</text>'; });
+
+  const baseTot = valueResult[0].curve.total;
+  const cards = valueResult.map(c => {
+    const save = baseTot - c.curve.total;
+    const sub = c.id === 'base' ? 'the do-nothing baseline'
+      : 'saves ' + eur(save) + ' vs do nothing' + (valueMC ? ' · exp. ' + eur(baseTot - valueMC[valueResult.indexOf(c)].meanTotal) : '');
+    return '<div class="vcase"><div class="vc-dot" style="background:' + c.color + '"></div><div><div class="vc-l">' + c.label + '</div>' +
+      '<div class="vc-n">' + eur(c.curve.total) + '</div><div class="vc-s">' + sub + '</div></div></div>';
+  }).join('');
+
+  el.innerHTML =
+    '<div class="value-controls"><div class="vseg"><button class="' + (valueMode === 'cum' ? 'on' : '') + '" onclick="setValueMode(\'cum\')">Cumulative €</button>' +
+    '<button class="' + (valueMode === 'rate' ? 'on' : '') + '" onclick="setValueMode(\'rate\')">Cost rate</button></div>' +
+    '<button class="btn-ghost" id="valueMcBtn" onclick="runValueMonteCarlo()">' + (valueMC ? 'Re-run Monte Carlo' : 'Add Monte Carlo band') + '</button>' +
+    (valueMC ? '<span class="chip ok">Case C beats Base in <b>' + valueMC.cBeatsBase + '%</b> of ' + valueMC.draws + ' scenarios</span>' : '') + '</div>' +
+    '<div class="gantt-box"><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:380px">' + svg + '</svg></div>' +
+    '<div class="vcases">' + cards + '</div>' +
+    '<p class="cap">All four policies face the same reality: a stand fault (E30, C26). Case A optimizes once before the fault is known, so the twin catches its plan on failed stands; B and C re-optimize against the current picture, and C shifts weight to the binding resource (' + (valueResult.binding || 'passenger') + '). The twin judges every policy against full reality. Cost drivers (€' + CONFIG.unit.connection + '/connection, €' + VALUE.eurDelayMin + '/delay-minute, €' + CONFIG.unit.busTrip + '/bus, €' + CONFIG.unit.tow + '/tow) are assumptions set in Config.</p>';
+}
+
+/* ----------------------- Pareto trade-off front -----------------------
+   The three objectives conflict, so there is no single optimum. The front
+   is traced with an epsilon-constraint sweep over the same MIP: minimize
+   one objective while bounding the others, swept across a grid. Each solve
+   is one non-dominated allocation. The three corner solves (each objective
+   minimized alone) give the signature strategies.
+--------------------------------------------------------------------- */
+let paretoFront = null;
+let selectedIdx = null;
+
+function objTotals(alloc) {
+  const t = { passenger: 0, handler: 0, schedule: 0 };
+  reallocFlights().forEach(f => {
+    const sid = alloc[f.id];
+    if (!sid || sid === 'ESC') { t.passenger += CONFIG.escalateCost; t.handler += CONFIG.escalateCost; t.schedule += CONFIG.escalateCost; return; }
+    const p = costParts(f, standById(sid));
+    t.passenger += p.passenger; t.handler += p.handler; t.schedule += p.schedule;
+  });
+  return t;
+}
+
+function buildSingleObjLP(glpk, minKey, caps) {
+  const flights = reallocFlights();
+  const objVars = [], binaries = [], subjectTo = [];
+  const capKeys = Object.keys(caps || {});
+  const capVars = {}; capKeys.forEach(k => capVars[k] = []);
+  flights.forEach(f => {
+    const assignVars = [];
+    STANDS.filter(s => isEligible(f, s)).forEach(s => {
+      const v = 'x__' + f.id + '__' + s.id;
+      const p = costParts(f, s);
+      objVars.push({ name: v, coef: p[minKey] });
+      binaries.push(v);
+      assignVars.push({ name: v, coef: 1 });
+      capKeys.forEach(k => capVars[k].push({ name: v, coef: p[k] }));
+    });
+    const esc = 'x__' + f.id + '__ESC';
+    objVars.push({ name: esc, coef: CONFIG.escalateCost });
+    binaries.push(esc);
+    assignVars.push({ name: esc, coef: 1 });
+    subjectTo.push({ name: 'assign_' + f.id, vars: assignVars, bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 } });
+  });
+  STANDS.forEach(s => {
+    const cands = flights.filter(f => isEligible(f, s));
+    for (let i = 0; i < cands.length; i++) for (let j = i + 1; j < cands.length; j++) {
+      const [a0, a1] = flightWindow(cands[i]); const [b0, b1] = flightWindow(cands[j]);
+      if (overlapsBy(a0, a1, b0, b1, pairBuffer(cands[i], cands[j]))) subjectTo.push({
+        name: 'conf_' + s.id + '_' + cands[i].id + '_' + cands[j].id,
+        vars: [{ name: 'x__' + cands[i].id + '__' + s.id, coef: 1 }, { name: 'x__' + cands[j].id + '__' + s.id, coef: 1 }],
+        bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 }
+      });
+    }
+  });
+  capKeys.forEach(k => subjectTo.push({ name: 'cap_' + k, vars: capVars[k], bnds: { type: glpk.GLP_UP, ub: caps[k], lb: 0 } }));
+  return { objVars, binaries, subjectTo };
+}
+
+async function solvePoint(glpk, minKey, caps) {
+  const m = buildSingleObjLP(glpk, minKey, caps);
+  const lp = { name: 'p', objective: { direction: glpk.GLP_MIN, name: minKey, vars: m.objVars }, subjectTo: m.subjectTo, binaries: m.binaries };
+  const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+  const st = res.result.status;
+  if (st === glpk.GLP_NOFEAS || st === glpk.GLP_INFEAS || st === glpk.GLP_UNDEF) return null;
+  const alloc = allocFromRes(res);
+  return { alloc, f: objTotals(alloc) };
+}
+
+function dominates(a, b) {
+  return a.passenger <= b.passenger && a.handler <= b.handler && a.schedule <= b.schedule &&
+    (a.passenger < b.passenger || a.handler < b.handler || a.schedule < b.schedule);
+}
+
+async function computeParetoFront() {
+  const glpk = await window.__glpkReady;
+  const keys = ['passenger', 'handler', 'schedule'];
+  const corners = {};
+  for (const k of keys) corners[k] = await solvePoint(glpk, k, {});
+  const range = {};
+  keys.forEach(k => { const vals = keys.map(c => corners[c].f[k]); range[k] = { min: Math.min(...vals), max: Math.max(...vals) }; });
+  const pts = keys.map(k => corners[k]);
+  const G = 4;
+  for (let i = 0; i <= G; i++) for (let j = 0; j <= G; j++) {
+    const hCap = range.handler.min + (range.handler.max - range.handler.min) * i / G;
+    const sCap = range.schedule.min + (range.schedule.max - range.schedule.min) * j / G;
+    const p = await solvePoint(glpk, 'passenger', { handler: hCap + 0.5, schedule: sCap + 0.5 });
+    if (p) pts.push(p);
+  }
+  const seen = new Set(), uniq = [];
+  pts.forEach(p => { const sig = JSON.stringify(p.alloc); if (!seen.has(sig)) { seen.add(sig); uniq.push(p); } });
+  const nd = uniq.filter(p => !uniq.some(q => q !== p && dominates(q.f, p.f)));
+  const idxOf = key => { let bi = 0; nd.forEach((p, i) => { if (p.f[key] < nd[bi].f[key]) bi = i; }); return bi; };
+  return { points: nd, sig: { passenger: idxOf('passenger'), handler: idxOf('handler'), schedule: idxOf('schedule') } };
+}
+
+async function runPareto() {
+  const btn = document.getElementById('paretoBtn');
+  btn.disabled = true; btn.textContent = 'Tracing the Pareto front…';
+  try {
+    const t0 = Date.now();
+    paretoFront = await computeParetoFront();
+    const ms = Date.now() - t0;
+    const status = document.getElementById('paretoStatus');
+    status.className = 'solve-meta show';
+    status.innerHTML = '<span class="chip ok">Non-dominated points <b>' + paretoFront.points.length + '</b></span>' +
+      '<span class="chip">Method <b>epsilon-constraint</b></span>' +
+      '<span class="chip">Sweep time <b>' + ms + ' ms</b></span>';
+    selectedIdx = null;
+    renderParetoUI();
+    selectStrategy(paretoFront.sig.passenger);
+  } catch (e) {
+    console.error(e);
+    document.getElementById('paretoUI').innerHTML = '<p class="empty">Sweep error: ' + (e.message || e) + '</p>';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Re-compute trade-off front';
+  }
+}
+
+function stratMeta(key) {
+  if (key === 'passenger') return { cls: 's-pax', color: '#88a8ed', title: 'Protect passengers', sub: 'Shortest walk, best connections' };
+  if (key === 'handler') return { cls: 's-hdl', color: '#4e55ab', title: 'Protect handlers', sub: 'Lowest handler strain' };
+  return { cls: 's-sch', color: '#170d81', title: 'Protect schedule', sub: 'Most contact stands, most stable' };
+}
+
+function allocSummary(alloc) {
+  let contact = 0, remote = 0;
+  reallocFlights().forEach(f => { const sid = alloc[f.id]; if (sid && sid !== 'ESC') { (standById(sid).type === 'remote' ? remote++ : contact++); } });
+  return contact + ' contact, ' + remote + ' remote · EK151 → ' + (alloc['EK151'] || 'ESC');
+}
+
+function renderParetoUI() {
+  const cards = ['passenger', 'handler', 'schedule'].map(key => {
+    const idx = paretoFront.sig[key]; const p = paretoFront.points[idx]; const m = stratMeta(key);
+    const bars = ['passenger', 'handler', 'schedule'].map(ax => {
+      const vals = paretoFront.points.map(pt => pt.f[ax]); const lo = Math.min(...vals), hi = Math.max(...vals);
+      const w = hi > lo ? Math.round((p.f[ax] - lo) / (hi - lo) * 100) : 0;
+      const best = ax === key;
+      return '<div class="metric"><span class="ml">' + ax + '</span><div class="mt"><div class="mf' + (best ? ' best' : '') + '" style="width:' + Math.max(6, w) + '%"></div></div><span class="mv">' + p.f[ax].toFixed(0) + '</span></div>';
+    }).join('');
+    return '<div class="strat ' + m.cls + '" id="strat-' + idx + '" onclick="selectStrategy(' + idx + ')">' +
+      '<div class="strat-h"><b>' + m.title + '</b><span class="tag2">' + m.sub + '</span></div>' +
+      '<div class="sum">' + allocSummary(p.alloc) + '</div>' + bars + '</div>';
+  }).join('');
+  document.getElementById('paretoUI').innerHTML =
+    '<div class="pareto-top"><div class="scatter-box"><h4>Pareto front</h4>' +
+    '<p class="hint">Each point is a non-dominated allocation. Down and to the left is better. Circle size is handler strain. Click a point or a strategy card.</p>' +
+    '<div id="scatter"></div></div><div class="strat-cards">' + cards + '</div></div>' +
+    '<div id="selHead" class="sel-head"></div>' +
+    '<button class="btn-primary" id="paretoAcceptBtn" style="margin:0 0 14px" onclick="acceptSelected()">Accept this strategy &rarr;</button>' +
+    '<div id="paretoAlloc"></div>' +
+    '<div class="opt-panels"><div id="paretoValue"></div></div>';
+  renderScatter();
+}
+
+function renderScatter() {
+  const W = 540, H = 320, pl = 54, pb = 46, pt = 14, pr = 18;
+  const pts = paretoFront.points;
+  const xs = pts.map(p => p.f.passenger), ys = pts.map(p => p.f.schedule), hs = pts.map(p => p.f.handler);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const hMin = Math.min(...hs), hMax = Math.max(...hs);
+  const sx = v => pl + (xMax > xMin ? (v - xMin) / (xMax - xMin) : 0.5) * (W - pl - pr);
+  const sy = v => (H - pb) - (yMax > yMin ? (v - yMin) / (yMax - yMin) : 0.5) * (H - pb - pt);
+  const sigByIdx = {}; Object.keys(paretoFront.sig).forEach(k => sigByIdx[paretoFront.sig[k]] = k);
+  let circles = '';
+  pts.forEach((p, i) => {
+    const r = 4 + (hMax > hMin ? (p.f.handler - hMin) / (hMax - hMin) : 0) * 7;
+    const sigKey = sigByIdx[i];
+    const sel = i === selectedIdx;
+    const fill = sigKey ? stratMeta(sigKey).color : '#c4bfbb';
+    const op = sigKey ? 1 : 0.5;
+    circles += '<circle cx="' + sx(p.f.passenger).toFixed(1) + '" cy="' + sy(p.f.schedule).toFixed(1) + '" r="' + r.toFixed(1) +
+      '" fill="' + fill + '" fill-opacity="' + op + '" stroke="' + (sel ? '#ffdd66' : '#ffffff') + '" stroke-width="' + (sel ? 3 : 1) +
+      '" style="cursor:pointer" onclick="selectStrategy(' + i + ')"></circle>';
+    if (sigKey) circles += '<text x="' + (sx(p.f.passenger) + r + 4).toFixed(1) + '" y="' + (sy(p.f.schedule) + 3.5).toFixed(1) +
+      '" font-size="10.5" fill="#1b2350">' + stratMeta(sigKey).title.replace('Protect ', '') + '</text>';
+  });
+  const axis = '<line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"></line>' +
+    '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"></line>' +
+    '<text x="' + (W / 2) + '" y="' + (H - 8) + '" font-size="11" fill="#6b7299" text-anchor="middle">Passenger cost (walk + connections) →</text>' +
+    '<text x="16" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 16 ' + (H / 2) + ')">Schedule cost →</text>';
+  document.getElementById('scatter').innerHTML = '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:340px">' + axis + circles + '</svg>';
+}
+
+function selectStrategy(idx) {
+  selectedIdx = idx;
+  const p = paretoFront.points[idx];
+  document.querySelectorAll('.strat').forEach(el => el.classList.remove('sel'));
+  const card = document.getElementById('strat-' + idx);
+  if (card) card.classList.add('sel');
+  const sigByIdx = {}; Object.keys(paretoFront.sig).forEach(k => sigByIdx[paretoFront.sig[k]] = k);
+  const label = sigByIdx[idx] ? stratMeta(sigByIdx[idx]).title : 'Selected allocation';
+  window.__selectedStrategy = { idx, alloc: p.alloc, f: p.f, key: sigByIdx[idx] || null };
+  document.getElementById('selHead').innerHTML = 'Selected: <span style="color:var(--evening)">' + label + '</span> · passenger ' +
+    p.f.passenger.toFixed(0) + ' · handler ' + p.f.handler.toFixed(0) + ' · schedule ' + p.f.schedule.toFixed(0) +
+    ' &nbsp; <span class="band">the Digital twin projects this allocation forward</span>';
+  renderAllocationInto('paretoAlloc', p.alloc);
+  renderValuePanel('paretoValue', p.alloc, new Set());
+  renderScatter();
+}
+
+/* ------------------------- digital twin --------------------------
+   Takes the chosen allocation and projects it forward in time. A
+   discrete simulation over the afternoon computes the downstream
+   state the static optimizer cannot see: passport queues, baggage
+   belt load, handler concurrency, and connection risk. A handler
+   that goes over capacity stretches its turnarounds, which can push
+   a later aircraft into a stand still occupied. The cascade.
+----------------------------------------------------------------- */
+const SIM_T0 = 850, SIM_T1 = 1000, SIM_STEP = 5;        // 14:10 to 16:40
+const PASSPORT_CAP = { S: 240, N: 180 };                // pax cleared per 5 min, per zone
+const HANDLER_SLIP = 15;                                // minutes a stretched turnaround extends
+const CONNECT_OVERHEAD = 15;                            // security recheck plus walk to the onward gate
+let twinTimer = null;
+
+function makeOcc(f, sid, win) {
+  const s = standById(sid);
+  return { flight: f, stand: sid, start: win[0], end: win[1], baseEnd: win[1], handler: f.handler,
+    zone: f.zone, pax: f.pax || 0, bags: f.bags || 0, conPax: f.conPax || 0, minCon: f.minCon || 0,
+    remote: s.type === 'remote', walk: s.walk, belt: s.belt, dir: f.dir || 'arr', extended: 0, conflict: false };
+}
+
+function buildOccupancies(alloc, towed) {
+  towed = towed || new Set();
+  const occ = [];
+  reallocFlights().forEach(f => {
+    const sid = alloc[f.id];
+    if (!sid || sid === 'ESC') return;
+    const s = standById(sid);
+    if (towed.has(f.id) && s.type === 'contact') {
+      // Split occupancy: deboard on contact (passengers, bags and handler count here),
+      // parked at a remote position, then board back on the contact stand. The middle
+      // frees the contact stand for another aircraft.
+      const sl = towSlivers(f);
+      occ.push({ ...makeOcc(f, sid, sl.deboard), towed: true, towPhase: 'deboard' });
+      const rsid = pickRemotePark(f, sl.park, occ);
+      occ.push({ ...makeOcc(f, rsid, sl.park), pax: 0, bags: 0, conPax: 0, handler: null, dir: 'tow', towed: true, towPhase: 'park' });
+      occ.push({ ...makeOcc(f, sid, sl.board), pax: 0, bags: 0, conPax: 0, handler: null, dir: 'tow', towed: true, towPhase: 'board' });
+    } else {
+      occ.push(makeOcc(f, sid, [f.predOn, f.predOn + (f.dwell || 45)]));
+    }
+  });
+  FLIGHTS.filter(g => !g.needsRealloc).forEach(g => {
+    const sid = g.stand || g.plannedStand;
+    if (sid) occ.push(makeOcc(g, sid, occWindowOf(g)));
+  });
+  return occ;
+}
+
+// Place a towed aircraft's parked phase on a free remote position that fits its size.
+function pickRemotePark(f, win, occ) {
+  const free = STANDS.find(s => s.type === 'remote' && CODE_NUM[s.code] >= CODE_NUM[f.code] &&
+    !occ.some(o => o.stand === s.id && overlaps(win[0], win[1], o.start, o.end)));
+  if (free) return free.id;
+  return (STANDS.find(s => s.type === 'remote' && CODE_NUM[s.code] >= CODE_NUM[f.code]) || STANDS.find(s => s.type === 'remote')).id;
+}
+
+function applyHandlerSlip(occ) {
+  for (let t = SIM_T0; t <= SIM_T1; t += SIM_STEP) {
+    HANDLERS.forEach(h => {
+      const active = occ.filter(o => o.handler === h.id && o.dir === 'arr' && t >= o.start && t < o.end);
+      const cap = handlerCapacity(h.id);
+      if (active.length > cap) {
+        const over = active.length - cap;
+        active.sort((a, b) => b.end - a.end).slice(0, over).forEach(o => {
+          if (!o.slipMarked) { o.end += HANDLER_SLIP; o.extended += HANDLER_SLIP; o.slipMarked = true; }
+        });
+      }
+    });
+  }
+}
+
+function markStandConflicts(occ) {
+  const byStand = {}; const events = [];
+  occ.forEach(o => { (byStand[o.stand] = byStand[o.stand] || []).push(o); });
+  Object.keys(byStand).forEach(sid => {
+    const list = byStand[sid].sort((a, b) => a.start - b.start);
+    for (let i = 0; i < list.length - 1; i++) {
+      if (list[i].end > list[i + 1].start) {
+        list[i].conflict = true; list[i + 1].conflict = true;
+        events.push({ t: list[i + 1].start, type: 'conflict',
+          text: sid + ': ' + disName(list[i + 1].flight) + ' due before ' + disName(list[i].flight) + ' clears (turnaround slipped)' });
+      }
+    }
+  });
+  return events;
+}
+
+function buildSteps(occ) {
+  const steps = []; let qS = 0, qN = 0, connRisk = 0; const counted = new Set(); const riskFlights = [];
+  for (let t = SIM_T0; t <= SIM_T1; t += SIM_STEP) {
+    let inS = 0, inN = 0;
+    occ.filter(o => o.dir === 'arr').forEach(o => {
+      const reach = o.start + o.walk;
+      if (reach >= t && reach < t + SIM_STEP) { if (o.zone === 'N') inN += o.pax; else inS += o.pax; }
+    });
+    qS = Math.max(0, qS + inS - PASSPORT_CAP.S);
+    qN = Math.max(0, qN + inN - PASSPORT_CAP.N);
+    let hPeak = 0, hWho = '';
+    HANDLERS.forEach(h => {
+      const c = occ.filter(o => o.handler === h.id && o.dir === 'arr' && t >= o.start && t < o.end).length;
+      const cap = handlerCapacity(h.id);
+      if (c / cap > hPeak) { hPeak = c / cap; hWho = h.id + ' ' + c + '/' + cap; }
+    });
+    let bPeak = 0, bWho = '';
+    BELTS.forEach(b => {
+      const cap = b === 'Remote belt' ? 700 : 500;
+      const load = occ.filter(o => standById(o.stand).belt === b && t >= o.start && t < o.end).reduce((s, o) => s + o.bags, 0);
+      if (load / cap > bPeak) { bPeak = load / cap; bWho = b; }
+    });
+    occ.filter(o => o.dir === 'arr' && o.conPax > 0 && !counted.has(o.flight.id)).forEach(o => {
+      const reach = o.start + o.walk;
+      if (reach >= t && reach < t + SIM_STEP) {
+        const q = o.zone === 'N' ? qN : qS, cap = o.zone === 'N' ? PASSPORT_CAP.N : PASSPORT_CAP.S;
+        const wait = q / cap * SIM_STEP;
+        if (o.walk + wait + CONNECT_OVERHEAD > o.minCon) {
+          connRisk += o.conPax; counted.add(o.flight.id);
+          riskFlights.push({ fid: o.flight.id, conPax: o.conPax, zone: o.zone, stand: o.stand, t });
+        }
+      }
+    });
+    steps.push({ t, qS, qN, hPeak, hWho, bPeak, bWho, connRisk });
+  }
+  return { steps, riskFlights };
+}
+
+function simulateTwin(alloc, towed) {
+  const occ = buildOccupancies(alloc, towed);
+  applyHandlerSlip(occ);
+  const events = markStandConflicts(occ);
+  const { steps, riskFlights } = buildSteps(occ);
+  HANDLERS.forEach(h => {
+    for (let t = SIM_T0; t <= SIM_T1; t += SIM_STEP) {
+      const active = occ.filter(o => o.handler === h.id && o.dir === 'arr' && t >= o.start && t < o.end);
+      const cap = handlerCapacity(h.id);
+      if (active.length > cap) {
+        events.push({ t, type: 'handler', text: h.id + ' over capacity (' + active.length + '/' + cap + '), turnarounds stretching',
+          sources: active.sort((a, b) => b.end - a.end).slice(0, 3).map(o => ({ fid: o.flight.id, detail: 'on ' + o.stand })) });
+        break;
+      }
+    }
+  });
+  ['N', 'S'].forEach(z => {
+    const isN = z === 'N';
+    let peak = 0, pt = 0;
+    steps.forEach(s => { const q = isN ? s.qN : s.qS; if (q > peak) { peak = q; pt = s.t; } });
+    if (peak > 120) {
+      const contribs = occ.filter(o => o.dir === 'arr' && (o.zone === 'N') === isN)
+        .map(o => ({ o, reach: o.start + o.walk }))
+        .filter(x => x.reach <= pt && x.reach > pt - 35)
+        .sort((a, b) => b.o.pax - a.o.pax).slice(0, 3);
+      events.push({ t: pt, type: 'queue',
+        text: (isN ? 'Non-Schengen' : 'Schengen') + ' passport queue peaks near ' + Math.round(peak) + ' passengers waiting',
+        sources: contribs.map(x => ({ fid: x.o.flight.id, detail: x.o.pax + ' pax from ' + (x.o.flight.from || x.o.flight.to || '') + (x.o.remote ? ', remote' : '') })) });
+    }
+  });
+  const finalRisk = steps[steps.length - 1].connRisk;
+  if (finalRisk > 0) {
+    let ft = SIM_T0; for (const s of steps) { if (s.connRisk > 0) { ft = s.t; break; } }
+    events.push({ t: ft, type: 'conn', text: 'About ' + finalRisk + ' connecting passengers at risk of missing connections',
+      affected: riskFlights.slice().sort((a, b) => b.conPax - a.conPax).map(r => ({ fid: r.fid, detail: r.conPax + ' connecting, ' + (r.zone === 'N' ? 'non-Schengen' : 'Schengen') + ', ' + r.stand })) });
+  }
+  events.sort((a, b) => a.t - b.t);
+  const series = {
+    qN: steps.map(s => s.qN), qS: steps.map(s => s.qS),
+    hPeak: steps.map(s => s.hPeak * 100), bPeak: steps.map(s => s.bPeak * 100), connRisk: steps.map(s => s.connRisk)
+  };
+  let peakIdx = 0; steps.forEach((s, i) => { if (s.qN > steps[peakIdx].qN) peakIdx = i; });
+  return { occ, steps, events, series, riskFlights, slips: occ.filter(o => o.extended > 0).length, peakIdx };
+}
+
+async function getActiveAllocation() {
+  if (needsDecisionFlights().length === 0 && Object.keys(state.committed).length) {
+    return { alloc: { ...CV.valid }, towed: state.committedTow || new Set(), label: 'Committed allocation' };
+  }
+  if (window.__selectedStrategy && window.__selectedStrategy.alloc) {
+    const k = window.__selectedStrategy.key;
+    return { alloc: window.__selectedStrategy.alloc, towed: new Set(), label: k ? stratMeta(k).title : 'Selected allocation' };
+  }
+  const glpk = await window.__glpkReady;
+  const m = buildModel(DEFAULT_WEIGHTS, glpk);
+  const lp = { name: 'a', objective: { direction: glpk.GLP_MIN, name: 'c', vars: m.objVars }, subjectTo: m.subjectTo, binaries: m.binaries };
+  if (m.bounds) lp.bounds = m.bounds;
+  const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+  return { alloc: allocFromRes(res), towed: towedFromRes(res), label: 'Balanced optimum (no strategy selected yet)' };
+}
+
+// First-come-first-served baseline: place flights in arrival order, each on the
+// first eligible stand that is free. The static rule an incumbent allocator runs.
+function fcfsAlloc() {
+  const alloc = {}; const used = [];
+  reallocFlights().slice().sort((a, b) => a.predOn - b.predOn).forEach(f => {
+    const [fs, fe] = flightWindow(f);
+    const stand = STANDS.find(s => isEligible(f, s) && !used.some(u => u.stand === s.id && overlapsBuf(fs, fe, u.start, u.end)));
+    if (stand) { alloc[f.id] = stand.id; used.push({ stand: stand.id, start: fs, end: fe }); }
+    else alloc[f.id] = 'ESC';
+  });
+  return alloc;
+}
+
+// Project the twin for the three Pareto corners and the FCFS baseline, and pull
+// the peak consequence metrics from each, so the chosen plan reads against the
+// alternatives ("96 at risk here versus 40 under protect-passengers").
+async function computeCounterfactuals() {
+  const glpk = await window.__glpkReady;
+  const variants = [];
+  for (const key of ['passenger', 'handler', 'schedule']) {
+    const p = await solvePoint(glpk, key, {});
+    if (p) variants.push({ key, label: stratMeta(key).title, alloc: p.alloc });
+  }
+  variants.push({ key: 'fcfs', label: 'First-come-first-served', alloc: fcfsAlloc(), baseline: true });
+  return variants.map(v => {
+    const sim = simulateTwin(v.alloc);
+    return { ...v, peak: {
+      qN: Math.round(Math.max(...sim.steps.map(s => s.qN))),
+      qS: Math.round(Math.max(...sim.steps.map(s => s.qS))),
+      conn: sim.steps[sim.steps.length - 1].connRisk,
+      slips: sim.slips,
+      hPeak: Math.round(Math.max(...sim.steps.map(s => s.hPeak)) * 100),
+    } };
+  });
+}
+
+function renderCounterfactual() {
+  const el = document.getElementById('twinCounterfactual');
+  if (!el || !window.__twin || !window.__twin.counterfactuals) return;
+  const cf = window.__twin.counterfactuals;
+  const activeKey = window.__selectedStrategy && window.__selectedStrategy.key;
+  const rows = [
+    { k: 'qN', label: 'Non-Schengen passport peak', unit: 'waiting' },
+    { k: 'qS', label: 'Schengen passport peak', unit: 'waiting' },
+    { k: 'conn', label: 'Connections at risk', unit: 'pax' },
+    { k: 'slips', label: 'Turnarounds slipping', unit: '' },
+    { k: 'hPeak', label: 'Peak handler load', unit: '%' },
+  ];
+  const head = '<tr><th>Consequence</th>' + cf.map(v =>
+    '<th class="' + (v.key === activeKey ? 'cf-active' : '') + '">' + v.label +
+    (v.baseline ? '<br><span class="cf-syn">synthetic baseline</span>' : '') + '</th>').join('') + '</tr>';
+  const body = rows.map(r => {
+    const best = Math.min(...cf.map(v => v.peak[r.k]));
+    return '<tr><td>' + r.label + '</td>' + cf.map(v =>
+      '<td class="' + (v.key === activeKey ? 'cf-active ' : '') + (v.peak[r.k] === best ? 'cf-best' : '') + '">' +
+      v.peak[r.k] + (r.unit ? ' ' + r.unit : '') + '</td>').join('') + '</tr>';
+  }).join('');
+  el.innerHTML = '<div class="twin-events"><h4>Counterfactual: this plan versus the alternatives</h4>' +
+    '<p class="hint">The same projection run for each strategy and a first-come-first-served baseline. The selected strategy is highlighted; the lowest value in each row is marked.</p>' +
+    '<table class="data cf-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
+}
+
+async function runTwin() {
+  const btn = document.getElementById('twinBtn');
+  btn.disabled = true; btn.textContent = 'Projecting…';
+  try {
+    const { alloc, towed, label } = await getActiveAllocation();
+    const sim = simulateTwin(alloc, towed);
+    const lbl = label + (towed && towed.size ? ' · ' + towed.size + ' towed to remote' : '');
+    const startIdx = Math.max(0, Math.min(sim.steps.length - 1, Math.round((state.now - SIM_T0) / SIM_STEP)));
+    window.__twin = { ...sim, idx: startIdx, label: lbl };
+    renderTwin();
+    window.__twin.counterfactuals = await computeCounterfactuals();
+    renderCounterfactual();
+    if (twinTimer) { clearInterval(twinTimer); twinTimer = null; }
+    twinPlay();   // start running forward from the current time
+  } catch (e) {
+    console.error(e);
+    document.getElementById('twinUI').innerHTML = '<p class="empty">Projection error: ' + (e.message || e) + '</p>';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Re-project';
+  }
+}
+
+function renderTwin() {
+  const t = window.__twin;
+  document.getElementById('twinUI').innerHTML =
+    '<div class="twin-controls">' +
+    '<button class="twin-play" id="twinPlayBtn" onclick="twinPlay()">Play</button>' +
+    '<input type="range" id="twinSlider" min="0" max="' + (t.steps.length - 1) + '" value="' + t.idx + '" oninput="twinScrub(this.value)">' +
+    '<span class="twin-clock" id="twinClock">' + fmt(t.steps[t.idx].t) + '</span>' +
+    '<span class="twin-strat">Projecting: <b>' + t.label + '</b>' + (t.slips ? ' · ' + t.slips + ' turnaround' + (t.slips > 1 ? 's' : '') + ' slipping' : '') + '</span>' +
+    '</div>' +
+    '<div class="tw-cards" id="twinGauges"></div>' +
+    '<div id="twinView"></div>' +
+    '<div class="twin-events"><h4>Cascade, as it emerges</h4><div id="twinEventList"></div></div>' +
+    '<div id="twinCounterfactual"></div>' +
+    '<div class="sankey-tip" id="sankeyTip"></div>';
+  renderTwinView();
+  renderTwinFrame();
+}
+
+function renderTwinView() {
+  document.getElementById('twinView').innerHTML =
+    '<div class="twin-charts">' +
+    '<div class="gantt-box"><h4>Stand occupancy, projected forward</h4>' +
+    '<p class="hint">Each bar is an aircraft on its stand. Amber is a departure, blue an arrival, deep blue a slipped-turnaround conflict. Dashed bars and links show a tow to a remote parking position, which frees the contact stand mid-dwell. The line is the current time.</p>' +
+    '<div id="ganttSvg"></div></div>' +
+    '<div class="gantt-box"><h4>Passenger flow through the terminal</h4>' +
+    '<p class="hint">A Sankey of the disrupted arrivals, from stand to passport control to the connection bank and onward departures. Ribbon width is passengers; a node turns deep blue when it congests. Hover any node or ribbon for detail.</p>' +
+    '<div id="sankeySvg"></div></div>' +
+    '</div>';
+  renderGantt();
+}
+
+function renderGantt() {
+  const t = window.__twin, occ = t.occ;
+  const stands = [...new Set(occ.map(o => o.stand))].sort((a, b) => STANDS.findIndex(s => s.id === a) - STANDS.findIndex(s => s.id === b));
+  const W = 920, rowH = 21, padL = 50, padT = 26, padB = 6;
+  const H = padT + stands.length * rowH + padB;
+  const x = v => padL + (v - SIM_T0) / (SIM_T1 - SIM_T0) * (W - padL - 12);
+  t.geom = { x0: padL, w: W - padL - 12, t0: SIM_T0, t1: SIM_T1, top: padT, bottom: H - padB };
+  let grid = '';
+  for (let tk = SIM_T0; tk <= SIM_T1; tk += 30) {
+    grid += '<line x1="' + x(tk).toFixed(1) + '" y1="' + padT + '" x2="' + x(tk).toFixed(1) + '" y2="' + (H - padB) + '" stroke="#eef2fa"/>' +
+      '<text x="' + x(tk).toFixed(1) + '" y="16" font-size="10.5" fill="#6b7299" text-anchor="middle">' + fmt(tk) + '</text>';
+  }
+  const rowY = {}; stands.forEach((sid, i) => rowY[sid] = padT + i * rowH);
+  let rows = '';
+  stands.forEach((sid) => {
+    const y = rowY[sid];
+    rows += '<text x="6" y="' + (y + rowH / 2 + 3.5) + '" font-size="11" font-weight="700" fill="#1b2350">' + sid + '</text>' +
+      '<line x1="' + padL + '" y1="' + (y + rowH) + '" x2="' + W + '" y2="' + (y + rowH) + '" stroke="#f2f4fa"/>';
+    const xMin = padL, xMax = W - 12;
+    occ.filter(o => o.stand === sid).forEach(o => {
+      const bx = Math.max(xMin, x(o.start));
+      const bEnd = Math.min(xMax, x(o.end));
+      const bw = Math.max(3, bEnd - bx);
+      const fill = o.conflict ? '#170d81' : o.towPhase === 'park' ? '#88a8ed' : o.dir === 'dep' ? '#ffdd66' : o.remote ? '#88a8ed' : '#4e55ab';
+      const txt = o.dir === 'dep' || o.towPhase === 'park' ? '#1b2350' : '#ffffff';
+      const stroke = o.towed ? ' stroke="#170d81" stroke-width="1" stroke-dasharray="2.5 1.5"' : '';
+      if (o.dir === 'arr' && (o.flight.predBand || 0) > 0) {   // Phase D: fuzzy edge = arrival-time uncertainty band
+        const fz0 = Math.max(xMin, x(o.start - o.flight.predBand)), fz1 = Math.min(xMax, x(o.start + o.flight.predBand));
+        rows += '<rect x="' + fz0.toFixed(1) + '" y="' + (y + 3) + '" width="' + Math.max(1, fz1 - fz0).toFixed(1) + '" height="' + (rowH - 7) + '" rx="2" fill="#4e55ab" fill-opacity="0.16"/>';
+      }
+      rows += '<rect x="' + bx.toFixed(1) + '" y="' + (y + 3) + '" width="' + bw.toFixed(1) + '" height="' + (rowH - 7) + '" rx="3" fill="' + fill + '"' + stroke + '/>';
+      if (o.extended > 0) {
+        const ex = Math.max(xMin, x(o.baseEnd));
+        rows += '<rect x="' + ex.toFixed(1) + '" y="' + (y + 3) + '" width="' + Math.max(2, bEnd - ex).toFixed(1) + '" height="' + (rowH - 7) + '" rx="2" fill="#170d81" fill-opacity="0.45"/>';
+      }
+      const lbl = o.towPhase === 'park' ? 'parked' : o.towPhase === 'board' ? '' : disName(o.flight);
+      if (bw > 30 && lbl) rows += '<text x="' + (bx + 4).toFixed(1) + '" y="' + (y + rowH / 2 + 3.5) + '" font-size="9.5" fill="' + txt + '">' + lbl + '</text>';
+    });
+  });
+  // Phase C: dashed connectors show the tow movement, contact stand down to the remote
+  // parking position and back, so the freed gap on the contact row reads as a tow.
+  let towlines = '';
+  const conn = (xx, y1, y2) => '<line x1="' + xx.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + xx.toFixed(1) + '" y2="' + y2.toFixed(1) + '" stroke="#170d81" stroke-width="1.3" stroke-dasharray="3 2"/>' +
+    '<circle cx="' + xx.toFixed(1) + '" cy="' + y2.toFixed(1) + '" r="2.4" fill="#170d81"/>';
+  [...new Set(occ.filter(o => o.towed).map(o => o.flight.id))].forEach(fid => {
+    const deb = occ.find(o => o.flight.id === fid && o.towPhase === 'deboard');
+    const park = occ.find(o => o.flight.id === fid && o.towPhase === 'park');
+    const brd = occ.find(o => o.flight.id === fid && o.towPhase === 'board');
+    if (!deb || !park || rowY[deb.stand] == null || rowY[park.stand] == null) return;
+    const yC = rowY[deb.stand] + rowH / 2, yR = rowY[park.stand] + rowH / 2;
+    towlines += conn(x(deb.end), yC, yR) + conn(brd ? x(brd.start) : x(park.end), yR, yC);
+  });
+  const now = '<line id="twinNow" x1="0" y1="' + padT + '" x2="0" y2="' + (H - padB) + '" stroke="#170d81" stroke-width="2"/>';
+  document.getElementById('ganttSvg').innerHTML =
+    '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:' + (H + 4) + 'px">' + grid + rows + towlines + now + '</svg>';
+}
+
+function sankeyTip(e, i) {
+  const tip = document.getElementById('sankeyTip');
+  if (!tip || !window.__sankeyTips) return;
+  tip.innerHTML = window.__sankeyTips[i];
+  tip.style.display = 'block';
+  const vw = window.innerWidth;
+  const left = e.clientX + 16 + 280 > vw ? e.clientX - 280 - 16 : e.clientX + 16;
+  tip.style.left = Math.max(8, left) + 'px';
+  tip.style.top = (e.clientY + 16) + 'px';
+}
+function sankeyHide() { const tip = document.getElementById('sankeyTip'); if (tip) tip.style.display = 'none'; }
+
+// A passenger-flow Sankey for the disrupted arrivals: stand -> passport arrivals
+// -> passport control (the queue) -> the connection bank -> onward departures.
+// Flows are cumulative passengers up to the current time, so it builds as you play.
+function renderSankey() {
+  const t = window.__twin, s = t.steps[t.idx], occ = t.occ, tm = s.t;
+  const tips = []; window.__sankeyTips = tips;
+  const tip = h => { tips.push(h); return tips.length - 1; };
+  const reach = o => o.start + o.walk;
+
+  const arrivals = reallocFlights().map(f => occ.find(o => o.flight.id === f.id)).filter(o => o && o.dir === 'arr');
+  let arrivedS = 0, arrivedN = 0, conS = 0, conN = 0;
+  arrivals.forEach(o => { if (reach(o) <= tm) { if (o.zone === 'N') { arrivedN += o.pax; conN += o.conPax; } else { arrivedS += o.pax; conS += o.conPax; } } });
+  let atRiskS = 0, atRiskN = 0;
+  (t.riskFlights || []).forEach(r => { if (r.t <= tm) { if (r.zone === 'N') atRiskN += r.conPax; else atRiskS += r.conPax; } });
+  atRiskS = Math.min(atRiskS, conS); atRiskN = Math.min(atRiskN, conN);
+  const onConnS = Math.max(0, conS - atRiskS), onConnN = Math.max(0, conN - atRiskN);
+  const landS = Math.max(0, arrivedS - conS), landN = Math.max(0, arrivedN - conN);
+  const onConn = onConnS + onConnN, atRisk = atRiskS + atRiskN, land = landS + landN;
+  const qS = Math.round(s.qS), qN = Math.round(s.qN);
+
+  const early = OUTBOUND.slice().sort((a, b) => a.dep - b.dep).slice(0, 3);
+  const earlyW = early.reduce((a, o) => a + o.w, 0) || 1;
+  OUTBOUND.forEach(o => { o._on = onConn * o.w; o._risk = early.includes(o) ? atRisk * (o.w / earlyW) : 0; o._val = o._on + o._risk; });
+
+  const W = 1140, H = 600, top = 34, bot = 16, nodeW = 96;
+  const colX = [24, 292, 548, 804, W - 24 - nodeW];
+  const nodes = {}; const order = [[], [], [], [], []];
+  function addNode(col, key, value, label, sub, fill, txt, tipHtml, pulse) {
+    const n = { key, value: Math.max(value, 0), label, sub, fill, txt: txt || '#1b2350', tip: tip(tipHtml), pulse: !!pulse, outCur: 0, inCur: 0 };
+    nodes[key] = n; order[col].push(n); return n;
+  }
+  const cong = q => q > 200 ? '#170d81' : q > 80 ? '#ffdd66' : '#dce7f7';
+  const congTxt = q => q > 200 ? '#fff' : '#1b2350';
+
+  arrivals.forEach(o => {
+    const arrived = reach(o) <= tm, isEK = o.flight.id === 'EK151';
+    addNode(0, 'a_' + o.flight.id, o.pax, disName(o.flight), o.pax + ' pax',
+      arrived && isEK ? '#170d81' : '#dce7f7', arrived && isEK ? '#fff' : '#1b2350',
+      '<b>' + disName(o.flight) + '</b> &middot; ' + o.flight.carrier + ' &middot; ' + o.flight.ac + '<br>' + o.pax + ' pax, ' + o.conPax + ' connecting &middot; ' + (o.zone === 'N' ? 'non-Schengen' : 'Schengen') +
+      '<br>stand ' + o.stand + ' &middot; +' + o.walk + ' min walk &middot; reaches passport ' + fmt(reach(o)), arrived && isEK);
+  });
+  addNode(1, 'pa_S', arrivedS, 'Schengen', arrivedS + ' pax', '#88a8ed', '#1b2350', '<b>Schengen arrivals</b><br>' + arrivedS + ' passengers reached passport');
+  addNode(1, 'pa_N', arrivedN, 'Non-Schengen', arrivedN + ' pax', '#88a8ed', '#1b2350', '<b>Non-Schengen arrivals</b><br>' + arrivedN + ' passengers reached passport');
+  addNode(2, 'pc_S', arrivedS, 'Schengen', qS + ' waiting', cong(qS), congTxt(qS), '<b>Schengen passport</b><br>' + qS + ' waiting &middot; 240 pax / 5 min', qS > 200);
+  addNode(2, 'pc_N', arrivedN, 'Non-Schengen', qN + ' waiting', cong(qN), congTxt(qN), '<b>Non-Schengen passport</b><br>' + qN + ' waiting &middot; 180 pax / 5 min', qN > 200);
+  addNode(3, 'on_conn', onConn, 'Connections', Math.round(onConn) + ' pax', '#dce7f7', '#1b2350', '<b>Connections</b><br>' + Math.round(onConn) + ' connecting passengers on time');
+  addNode(3, 'on_risk', atRisk, 'At risk', Math.round(atRisk) + ' pax', atRisk > 0 ? '#170d81' : '#dce7f7', atRisk > 0 ? '#fff' : '#1b2350', '<b>Connections at risk</b><br>' + Math.round(atRisk) + ' connecting passengers may miss their onward flight', atRisk > 0);
+  addNode(3, 'on_land', land, 'Landside', Math.round(land) + ' pax', '#e6e2dc', '#1b2350', '<b>Landside exit</b><br>' + Math.round(land) + ' passengers ending their journey at CPH');
+  OUTBOUND.forEach(o => addNode(4, 'd_' + o.id, o._val, o.id, o.to, o._risk > 0 ? '#cdd8ef' : '#dce7f7', '#1b2350',
+    '<b>' + o.id + '</b> &middot; ' + o.carrier + ' &rarr; ' + o.to + ' &middot; dep ' + fmt(o.dep) + '<br>' + Math.round(o._val) + ' connecting' + (o._risk > 0 ? ', ' + Math.round(o._risk) + ' at risk' : '')));
+
+  function layout(items, x) {
+    if (!items.length) return;
+    const total = items.reduce((a, n) => a + n.value, 0) || 1;
+    const gap = 9, availH = H - top - bot - gap * (items.length - 1), scale = availH / total;
+    let y = top;
+    items.forEach(n => { n.h = Math.max(14, n.value * scale); n.x = x; n.y = y; y += n.h + gap; });
+    const off = Math.max(0, (H - top - bot - (y - gap - top)) / 2);
+    items.forEach(n => { n.y += off; n.outCur = n.y; n.inCur = n.y; });
+  }
+  order.forEach((items, i) => layout(items, colX[i]));
+
+  const links = [];
+  const L = (sk, tk, value, color, tipHtml) => { if (value > 0.5 && nodes[sk] && nodes[tk]) links.push({ s: nodes[sk], t: nodes[tk], value, color, tip: tip(tipHtml) }); };
+  arrivals.forEach(o => L('a_' + o.flight.id, o.zone === 'N' ? 'pa_N' : 'pa_S', reach(o) <= tm ? o.pax : 0,
+    o.zone === 'N' && qN > 200 ? '#170d81' : '#88a8ed',
+    '<b>' + disName(o.flight) + ' &rarr; ' + (o.zone === 'N' ? 'non-Schengen' : 'Schengen') + ' passport</b><br>' + o.pax + ' pax &middot; +' + o.walk + ' min walk from ' + o.stand));
+  L('pa_S', 'pc_S', arrivedS, '#88a8ed', '<b>Schengen to passport control</b><br>' + arrivedS + ' pax');
+  L('pa_N', 'pc_N', arrivedN, qN > 200 ? '#170d81' : '#88a8ed', '<b>Non-Schengen to passport control</b><br>' + arrivedN + ' pax');
+  L('pc_S', 'on_conn', onConnS, '#88a8ed', '<b>Schengen connections</b><br>' + Math.round(onConnS) + ' pax on time');
+  L('pc_S', 'on_risk', atRiskS, '#170d81', '<b>Schengen connections at risk</b><br>' + Math.round(atRiskS) + ' pax');
+  L('pc_S', 'on_land', landS, '#cdd8ef', '<b>Schengen to landside</b><br>' + Math.round(landS) + ' pax');
+  L('pc_N', 'on_conn', onConnN, '#88a8ed', '<b>Non-Schengen connections</b><br>' + Math.round(onConnN) + ' pax on time');
+  L('pc_N', 'on_risk', atRiskN, '#170d81', '<b>Non-Schengen connections at risk</b><br>' + Math.round(atRiskN) + ' pax');
+  L('pc_N', 'on_land', landN, '#cdd8ef', '<b>Non-Schengen to landside</b><br>' + Math.round(landN) + ' pax');
+  OUTBOUND.forEach(o => {
+    L('on_conn', 'd_' + o.id, o._on, '#88a8ed', '<b>Connections &rarr; ' + o.id + '</b><br>' + Math.round(o._on) + ' pax');
+    L('on_risk', 'd_' + o.id, o._risk, '#170d81', '<b>At risk &rarr; ' + o.id + '</b><br>' + Math.round(o._risk) + ' pax may misconnect');
+  });
+
+  let svg = '';
+  ['ARRIVALS', 'PASSPORT', 'PASSPORT CONTROL', 'ONWARD', 'DEPARTURES'].forEach((h, i) =>
+    svg += '<text x="' + (colX[i] + nodeW / 2) + '" y="18" text-anchor="middle" font-size="11" font-weight="700" fill="#6b7299">' + h + '</text>');
+  links.forEach(lk => {
+    const S = lk.s, Tn = lk.t;
+    const sH = S.value > 0 ? lk.value * (S.h / S.value) : 0, tH = Tn.value > 0 ? lk.value * (Tn.h / Tn.value) : 0;
+    const s0 = S.outCur, s1 = S.outCur + sH; S.outCur += sH;
+    const t0 = Tn.inCur, t1 = Tn.inCur + tH; Tn.inCur += tH;
+    const x1 = S.x + nodeW, x2 = Tn.x, mx = (x1 + x2) / 2;
+    svg += '<path d="M' + x1.toFixed(1) + ',' + s0.toFixed(1) + ' C' + mx.toFixed(1) + ',' + s0.toFixed(1) + ' ' + mx.toFixed(1) + ',' + t0.toFixed(1) + ' ' + x2.toFixed(1) + ',' + t0.toFixed(1) +
+      ' L' + x2.toFixed(1) + ',' + t1.toFixed(1) + ' C' + mx.toFixed(1) + ',' + t1.toFixed(1) + ' ' + mx.toFixed(1) + ',' + s1.toFixed(1) + ' ' + x1.toFixed(1) + ',' + s1.toFixed(1) + ' Z" ' +
+      'fill="' + lk.color + '" fill-opacity="0.38" onmousemove="sankeyTip(event,' + lk.tip + ')" onmouseout="sankeyHide()"></path>';
+  });
+  Object.values(nodes).forEach(n => {
+    svg += '<g' + (n.pulse ? ' class="flow-pulse"' : '') + ' style="cursor:default" onmousemove="sankeyTip(event,' + n.tip + ')" onmouseout="sankeyHide()">' +
+      '<rect x="' + n.x + '" y="' + n.y.toFixed(1) + '" width="' + nodeW + '" height="' + n.h.toFixed(1) + '" rx="5" fill="' + n.fill + '" stroke="#d8d3cc"></rect>';
+    if (n.h >= 26) svg += '<text x="' + (n.x + nodeW / 2) + '" y="' + (n.y + n.h / 2 - 2).toFixed(1) + '" text-anchor="middle" font-size="11" font-weight="700" fill="' + n.txt + '">' + n.label + '</text>' +
+      '<text x="' + (n.x + nodeW / 2) + '" y="' + (n.y + n.h / 2 + 11).toFixed(1) + '" text-anchor="middle" font-size="9.5" fill="' + n.txt + '" opacity="0.8">' + n.sub + '</text>';
+    else svg += '<text x="' + (n.x + nodeW / 2) + '" y="' + (n.y + n.h / 2 + 3.5).toFixed(1) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="' + n.txt + '">' + n.label + '</text>';
+    svg += '</g>';
+  });
+  document.getElementById('sankeySvg').innerHTML =
+    '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:600px">' + svg + '</svg>';
+}
+
+function sparkline(vals, idx, color, threshold) {
+  const w = 150, h = 34, max = Math.max(1, ...vals, threshold || 0);
+  const X = i => vals.length > 1 ? i / (vals.length - 1) * w : 0;
+  const Y = v => h - (v / max) * h;
+  const poly = vals.map((v, i) => X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ');
+  const thr = threshold ? '<line x1="0" y1="' + Y(threshold).toFixed(1) + '" x2="' + w + '" y2="' + Y(threshold).toFixed(1) + '" stroke="#c4bfbb" stroke-dasharray="3 3"/>' : '';
+  return '<svg width="100%" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" style="height:34px">' + thr +
+    '<polyline points="' + poly + '" fill="none" stroke="' + color + '" stroke-width="1.6"/>' +
+    '<circle cx="' + X(idx).toFixed(1) + '" cy="' + Y(vals[idx]).toFixed(1) + '" r="3" fill="' + color + '"/></svg>';
+}
+
+function gaugeCard(label, valHtml, cls, spark) {
+  return '<div class="tw-card"><div class="lbl">' + label + '</div><div class="val ' + (cls || '') + '">' + valHtml + '</div>' + spark + '</div>';
+}
+
+function renderTwinFrame() {
+  const t = window.__twin, s = t.steps[t.idx];
+  document.getElementById('twinClock').textContent = fmt(s.t);
+  const sl = document.getElementById('twinSlider'); if (sl) sl.value = t.idx;
+  if (t.geom && document.getElementById('twinNow')) {
+    const nx = t.geom.x0 + (s.t - t.geom.t0) / (t.geom.t1 - t.geom.t0) * t.geom.w;
+    const nl = document.getElementById('twinNow'); nl.setAttribute('x1', nx.toFixed(1)); nl.setAttribute('x2', nx.toFixed(1));
+  }
+  renderSankey();
+  const qNcls = s.qN > 250 ? 'crit' : s.qN > 80 ? 'warn' : '';
+  const qScls = s.qS > 250 ? 'crit' : s.qS > 80 ? 'warn' : '';
+  const hcls = s.hPeak >= 1 ? 'crit' : s.hPeak >= 0.8 ? 'warn' : '';
+  const bcls = s.bPeak >= 1 ? 'crit' : s.bPeak >= 0.85 ? 'warn' : '';
+  document.getElementById('twinGauges').innerHTML =
+    gaugeCard('Passport queue · non-Schengen', Math.round(s.qN) + ' <small>waiting</small>', qNcls, sparkline(t.series.qN, t.idx, '#170d81', 0)) +
+    gaugeCard('Passport queue · Schengen', Math.round(s.qS) + ' <small>waiting</small>', qScls, sparkline(t.series.qS, t.idx, '#4e55ab', 0)) +
+    gaugeCard('Peak handler load', Math.round(s.hPeak * 100) + '% <small>' + (s.hWho || '') + '</small>', hcls, sparkline(t.series.hPeak, t.idx, '#4e55ab', 100)) +
+    gaugeCard('Peak baggage belt', Math.round(s.bPeak * 100) + '% <small>' + (s.bWho || '') + '</small>', bcls, sparkline(t.series.bPeak, t.idx, '#88a8ed', 100)) +
+    gaugeCard('Connections at risk', s.connRisk + ' <small>passengers</small>', s.connRisk > 0 ? 'crit' : '', sparkline(t.series.connRisk, t.idx, '#170d81', 0)) +
+    gaugeCard('Turnarounds slipping', t.slips + ' <small>of ' + reallocFlights().length + '</small>', t.slips > 0 ? 'warn' : '', '<svg width="100%" viewBox="0 0 150 34" style="height:34px"></svg>');
+  document.getElementById('twinEventList').innerHTML = t.events.length
+    ? t.events.map(e => {
+        const list = e.sources ? { lbl: 'Source', items: e.sources } : e.affected ? { lbl: 'Affected', items: e.affected } : null;
+        const sub = list && list.items.length
+          ? '<div class="evt-sub">' + list.lbl + ': ' + list.items.map(x =>
+              '<span class="evt-chip">' + disName(flightById(x.fid)) + '</span> ' + x.detail).join(' &nbsp;·&nbsp; ') + '</div>'
+          : '';
+        return '<div class="evt' + (e.t > s.t ? ' future' : '') + '"><span class="et">' + fmt(e.t) +
+          '</span><span class="dotc ' + e.type + '"></span><span class="ed">' + e.text + sub + '</span></div>';
+      }).join('')
+    : '<p class="cap">No downstream conflicts surfaced for this allocation.</p>';
+}
+
+function twinScrub(v) { window.__twin.idx = +v; renderTwinFrame(); }
+
+function twinPlay() {
+  const b = document.getElementById('twinPlayBtn');
+  if (twinTimer) { clearInterval(twinTimer); twinTimer = null; b.textContent = 'Play'; b.classList.remove('on'); return; }
+  const t = window.__twin;
+  if (t.idx >= t.steps.length - 1) t.idx = 0;
+  b.textContent = 'Pause'; b.classList.add('on');
+  twinTimer = setInterval(() => {
+    const tw = window.__twin;
+    if (tw.idx >= tw.steps.length - 1) { clearInterval(twinTimer); twinTimer = null; b.textContent = 'Replay'; b.classList.remove('on'); return; }
+    tw.idx++; renderTwinFrame();
+  }, 420);
+}
+
+/* ----------------------------- config ------------------------------
+   The policy constants in CONFIG, surfaced for the governance owner.
+   Each change re-runs Optimize; defaults reproduce the base scenario.
+------------------------------------------------------------------- */
+function renderConfig() {
+  const el = document.getElementById('configUI');
+  if (!el) return;
+  const num = (path, label, val, step, min, max, unit) =>
+    '<div class="cfg-row"><label>' + label + (unit ? ' <span class="cfg-unit">' + unit + '</span>' : '') + '</label>' +
+    '<input type="number" data-path="' + path + '" value="' + val + '" step="' + step + '"' +
+    (min != null ? ' min="' + min + '"' : '') + (max != null ? ' max="' + max + '"' : '') + ' onchange="setConfig(this)"></div>';
+  const chk = (path, label, val) =>
+    '<div class="cfg-row"><label>' + label + '</label><input type="checkbox" data-path="' + path + '"' + (val ? ' checked' : '') + ' onchange="setConfig(this)"></div>';
+  el.innerHTML =
+    '<div class="cfg-grid">' +
+    '<div class="cfg-card"><h4>Objective weights</h4><p class="cfg-note">How the optimizer trades the three soft costs.</p>' +
+    num('weights.passenger', 'Passenger', CONFIG.weights.passenger, 0.1, 0, 5) +
+    num('weights.handler', 'Handler', CONFIG.weights.handler, 0.1, 0, 5) +
+    num('weights.schedule', 'Schedule', CONFIG.weights.schedule, 0.1, 0, 5) + '</div>' +
+    '<div class="cfg-card"><h4>Model parameters</h4><p class="cfg-note">Hard and soft constants in the MIP.</p>' +
+    num('escalateCost', 'Escalation dummy cost', CONFIG.escalateCost, 500, 0) +
+    num('confBuffer', 'Conflict buffer', CONFIG.confBuffer, 1, 0, 30, 'min') +
+    num('bandBufferK', 'Uncertainty buffer factor', CONFIG.bandBufferK, 0.1, 0, 3) +
+    num('stabilityPenalty', 'Rolling stability penalty', CONFIG.stabilityPenalty, 1, 0) +
+    num('remotePenalty', 'Remote-stand penalty', CONFIG.remotePenalty, 1, 0) +
+    num('sizeGapPenalty', 'Oversize penalty per code', CONFIG.sizeGapPenalty, 1, 0) + '</div>' +
+    '<div class="cfg-card"><h4>Fleet and tow</h4><p class="cfg-note">Remote-servicing resources. Tow is Phase C.</p>' +
+    chk('allowTow', 'Allow tow to remote', CONFIG.allowTow) +
+    num('towCost', 'Tow cost', CONFIG.towCost, 1, 0) +
+    num('tugFleet', 'Tug fleet size', CONFIG.tugFleet, 1, 1) +
+    num('busFleet', 'Bus fleet size', CONFIG.busFleet, 1, 1) + '</div>' +
+    '<div class="cfg-card"><h4>Value unit costs</h4><p class="cfg-note">Assumptions for the business-case panel (Phase E).</p>' +
+    num('unit.connection', 'Protected connection', CONFIG.unit.connection, 10, 0, null, '€') +
+    num('unit.tow', 'Tow movement', CONFIG.unit.tow, 10, 0, null, '€') +
+    num('unit.busTrip', 'Bus trip', CONFIG.unit.busTrip, 10, 0, null, '€') +
+    num('unit.contactHour', 'Contact-stand hour', CONFIG.unit.contactHour, 10, 0, null, '€') + '</div>' +
+    '</div>' +
+    '<button class="btn-ghost" style="margin-top:16px" onclick="resetConfig()">Reset to defaults</button>';
+}
+
+function setConfig(el) {
+  const val = el.type === 'checkbox' ? el.checked : parseFloat(el.value);
+  if (el.type !== 'checkbox' && isNaN(val)) return;
+  const parts = el.dataset.path.split('.');
+  let o = CONFIG;
+  for (let i = 0; i < parts.length - 1; i++) o = o[parts[i]];
+  o[parts[parts.length - 1]] = val;
+  applyConfig();
+}
+
+function applyConfig() {
+  render();                              // apron and committed validity reflect the new constants
+  if (window.__glpk) runOptimization();  // re-solve so the Optimize tab shows the effect
+}
+
+function resetConfig() {
+  const d = CONFIG_DEFAULTS;
+  Object.keys(d.weights).forEach(k => CONFIG.weights[k] = d.weights[k]);   // mutate in place (DEFAULT_WEIGHTS alias)
+  Object.keys(d.unit).forEach(k => CONFIG.unit[k] = d.unit[k]);
+  ['escalateCost', 'confBuffer', 'bandBufferK', 'stabilityPenalty', 'remotePenalty', 'sizeGapPenalty', 'allowTow', 'towCost', 'tugFleet', 'busFleet'].forEach(k => CONFIG[k] = d[k]);
+  renderConfig();
+  applyConfig();
+}
+
+/* --------------------------- clock / tabs --------------------------- */
+function step(mins) { state.now += mins; if (state.now > 1020) state.now = 1020; render(); }
+
+function togglePlay() {
+  state.playing = !state.playing;
+  const btn = document.getElementById('playBtn');
+  btn.textContent = state.playing ? 'Pause feed' : 'Play feed';
+  btn.classList.toggle('on', state.playing);
+  if (state.playing) {
+    state.timer = setInterval(() => { step(1); if (state.now >= 1020) togglePlay(); }, 700);
+  } else {
+    clearInterval(state.timer);
+  }
+}
+
+const PANE_TITLES = {
+  apron: ['Apron picture', 'Live snapshot of every stand and the rolling traffic window'],
+  flights: ['Flight schedule', 'Scheduled against ML-predicted on-block times'],
+  optimize: ['Whole-apron optimization', 'One pass, solved as a binary mixed-integer program'],
+  pareto: ['Trade-off front', 'Non-dominated strategies, the human chooses which to accept'],
+  changes: ['Event log', 'Decisions, strategy changes, and picture changes, continuously revalidated against the live picture'],
+  twin: ['Digital twin', 'Project the chosen allocation forward to reveal the cascade'],
+  value: ['Business value over time', 'Four operating policies against the same disruption, cost integrated in euros'],
+  gov: ['Governance and EU AI Act', 'How the system is classified and what keeps it compliant'],
+  defs: ['Definitions', 'The concepts, scores, and units behind the solution'],
+  config: ['Config', 'Governed policy constants. A change re-runs the optimization. Defaults reproduce the base scenario'],
+};
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+  const t = PANE_TITLES[name];
+  if (t) { document.getElementById('paneTitle').textContent = t[0]; document.getElementById('paneSub').textContent = t[1]; }
+}
+
+render();
+renderConfig();
+</script>
+</body>
+</html>
