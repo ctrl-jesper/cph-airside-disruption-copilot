@@ -273,6 +273,13 @@
   .feed-speed { display: inline-flex; gap: 4px; }
   .feed-speed button { background: #f6f8fd; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; color: var(--muted); }
   .feed-speed button.on { background: var(--midnight); color: #fff; border-color: var(--midnight); }
+  .opt-toggle { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .opt-toggle .hint { font-size: 11.5px; color: var(--muted); }
+  .opt-moves { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .opt-moves h4 { margin: 0 0 8px; font-size: 13px; color: var(--midnight); }
+  table.mini { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.mini th { text-align: left; color: var(--muted); font-weight: 600; padding: 3px 8px 5px 0; border-bottom: 1px solid var(--border); }
+  table.mini td { padding: 4px 8px 4px 0; border-bottom: 1px solid #f0f3fa; font-variant-numeric: tabular-nums; }
   .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .evt:last-child { border-bottom: none; }
   .evt.future { opacity: 0.38; }
@@ -1403,6 +1410,9 @@ const CONFIG = {
   towCost: 20,            // Phase C: objective points for one tow (tug, crew, time)
   tugFleet: 4,            // Phase C: shared tug resource for tows and remote servicing
   busFleet: 4,            // Phase C: shared bus resource for remote boarding
+  optCadence: 5,          // V4.3: sim-minutes between rolling re-optimizations
+  windowMin: 180,         // V4.3: rolling horizon the optimizer plans over (minutes ahead)
+  commitLead: 20,         // V4.3: a flight locks its stand this many minutes before on-block
   unit: { connection: 250, tow: 600, busTrip: 120, contactHour: 400 }, // Phase E: euro unit costs (assumptions)
 };
 const CONFIG_DEFAULTS = JSON.parse(JSON.stringify(CONFIG));
@@ -2785,6 +2795,10 @@ function renderConfig() {
     num('towCost', 'Tow cost', CONFIG.towCost, 1, 0) +
     num('tugFleet', 'Tug fleet size', CONFIG.tugFleet, 1, 1) +
     num('busFleet', 'Bus fleet size', CONFIG.busFleet, 1, 1) + '</div>' +
+    '<div class="cfg-card"><h4>Continuous optimization</h4><p class="cfg-note">The rolling horizon the 48h-feed optimizer plans over (V4).</p>' +
+    num('optCadence', 'Re-optimize every', CONFIG.optCadence, 1, 1, 60, 'min') +
+    num('windowMin', 'Planning window', CONFIG.windowMin, 15, 30, 480, 'min') +
+    num('commitLead', 'Commit lead', CONFIG.commitLead, 1, 0, 90, 'min') + '</div>' +
     '<div class="cfg-card"><h4>Value unit costs</h4><p class="cfg-note">Assumptions for the business-case panel (Phase E).</p>' +
     num('unit.connection', 'Protected connection', CONFIG.unit.connection, 10, 0, null, '€') +
     num('unit.tow', 'Tow movement', CONFIG.unit.tow, 10, 0, null, '€') +
@@ -2813,7 +2827,7 @@ function resetConfig() {
   const d = CONFIG_DEFAULTS;
   Object.keys(d.weights).forEach(k => CONFIG.weights[k] = d.weights[k]);   // mutate in place (DEFAULT_WEIGHTS alias)
   Object.keys(d.unit).forEach(k => CONFIG.unit[k] = d.unit[k]);
-  ['escalateCost', 'confBuffer', 'bandBufferK', 'stabilityPenalty', 'remotePenalty', 'sizeGapPenalty', 'allowTow', 'towCost', 'tugFleet', 'busFleet'].forEach(k => CONFIG[k] = d[k]);
+  ['escalateCost', 'confBuffer', 'bandBufferK', 'stabilityPenalty', 'remotePenalty', 'sizeGapPenalty', 'allowTow', 'towCost', 'tugFleet', 'busFleet', 'optCadence', 'windowMin', 'commitLead'].forEach(k => CONFIG[k] = d[k]);
   renderConfig();
   applyConfig();
 }
@@ -2856,6 +2870,7 @@ function v4Tick(ts) {
   const dtReal = Math.min(0.25, (ts - v4.lastTs) / 1000); v4.lastTs = ts;   // seconds, capped to avoid jumps on refocus
   v4.now = Math.min(SIM_HORIZON, v4.now + dtReal * V4_SPEEDS[v4.speedIdx]);  // 1 sim-min per real-sec at base
   v4Frame();
+  v4MaybeSolve();
   if (v4.now >= SIM_HORIZON) { v4.playing = false; v4.raf = null; v4Controls(); }
   else v4.raf = requestAnimationFrame(v4Tick);
 }
@@ -2864,19 +2879,23 @@ function v4Play() {
   else { if (v4.now >= SIM_HORIZON) v4.now = 0; v4.playing = true; v4.lastTs = null; v4.raf = requestAnimationFrame(v4Tick); }
   v4Controls();
 }
-function v4Scrub(m) { v4.now = Math.max(0, Math.min(SIM_HORIZON, +m)); v4Frame(); }
+function v4Scrub(m) { v4.now = Math.max(0, Math.min(SIM_HORIZON, +m)); v4Frame(); if (v4sim.optimize) v4MaybeSolve(); }
 function v4SetSpeed(i) { v4.speedIdx = +i; v4Controls(); }
-function v4Reset() { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; v4.now = 0; v4Render(); }
+function v4Reset() { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; v4.now = 0; if (v4sim.optimize) v4InitPlan(); v4Render(); }
 
 function v4Render() {
   const el = document.getElementById('feedUI'); if (!el) return;
+  const ganttSub = v4sim.optimize ? 'live optimized allocation' : 'static planned allocation';
   el.innerHTML =
     '<div id="feedControls"></div>' +
+    '<div class="opt-toggle"><button class="twin-play ' + (v4sim.optimize ? 'on' : '') + '" onclick="v4ToggleOptimize()">Continuous optimization: ' + (v4sim.optimize ? 'ON' : 'OFF') + '</button>' +
+    '<span class="hint">Re-optimize every ' + CONFIG.optCadence + ' min over a ' + (CONFIG.windowMin / 60).toFixed(CONFIG.windowMin % 60 ? 1 : 0) + ' h window; commit ' + CONFIG.commitLead + ' min before on-block. Change these in Config.</span></div>' +
     '<div id="feedNow"></div>' +
-    '<div class="gantt-box"><h4>48-hour stand occupancy <span class="band">planned schedule, ' + FEED.filter(f => f.dir === 'arr').length + ' arrivals on 18 stands</span></h4>' +
-    '<p class="hint">Each bar is a turnaround on its planned stand. Deep blue is a flight carrying a propagated early-turnaround delay. The amber line is the current feed time.</p>' +
+    '<div id="feedOpt"></div>' +
+    '<div class="gantt-box"><h4>48-hour stand occupancy <span class="band">' + ganttSub + ', ' + FEED.filter(f => f.dir === 'arr').length + ' arrivals on 18 stands</span></h4>' +
+    '<p class="hint">Each bar is a turnaround on its stand. Deep blue is a flight carrying a propagated early-turnaround delay; an amber outline marks a flight the optimizer reassigned. The amber line is the current feed time.</p>' +
     '<div id="feedGantt"></div></div>';
-  v4Controls(); v4Gantt(); v4Frame();
+  v4Controls(); v4OptPanel(); v4Gantt(); v4Frame();
 }
 
 function v4Controls() {
@@ -2898,10 +2917,13 @@ function v4Gantt() {
   let svg = '';
   for (let d = 0; d <= 48; d += 6) { const xx = x(d * 60); svg += '<line x1="' + xx.toFixed(1) + '" y1="' + padT + '" x2="' + xx.toFixed(1) + '" y2="' + (H - padB) + '" stroke="#eef2fa"/><text x="' + xx.toFixed(1) + '" y="14" font-size="9.5" fill="#6b7299" text-anchor="middle">' + (d < 24 ? 'D1 ' + pad(d) : 'D2 ' + pad(d - 24)) + '</text>'; }
   stands.forEach(sid => { const y = rowY[sid]; svg += '<text x="6" y="' + (y + rowH / 2 + 3) + '" font-size="9" font-weight="700" fill="#1b2350">' + sid + '</text>'; });
-  FEED.filter(f => f.dir === 'arr' && f.plannedStand && rowY[f.plannedStand] != null).forEach(f => {
-    const y = rowY[f.plannedStand], bx = x(f.predOn), bw = Math.max(1.2, x(f.predOn + (f.dwell || 45)) - bx);
+  const moved = new Set(v4sim.moves.map(m => m.id));
+  FEED.filter(f => f.dir === 'arr').forEach(f => {
+    const sid = v4StandOf(f); if (!sid || rowY[sid] == null) return;
+    const y = rowY[sid], bx = x(f.predOn), bw = Math.max(1.2, x(f.predOn + (f.dwell || 45)) - bx);
     const fill = f.delayMin > 0 ? '#170d81' : f.zone === 'N' ? '#88a8ed' : '#4e55ab';
-    svg += '<rect x="' + bx.toFixed(1) + '" y="' + (y + 2) + '" width="' + bw.toFixed(1) + '" height="' + (rowH - 4) + '" rx="1.5" fill="' + fill + '"/>';
+    const stroke = (v4sim.optimize && moved.has(f.id)) ? ' stroke="#ffba08" stroke-width="1.4"' : '';
+    svg += '<rect x="' + bx.toFixed(1) + '" y="' + (y + 2) + '" width="' + bw.toFixed(1) + '" height="' + (rowH - 4) + '" rx="1.5" fill="' + fill + '"' + stroke + '/>';
   });
   svg += '<line id="feedNowLine" x1="0" y1="' + padT + '" x2="0" y2="' + (H - padB) + '" stroke="#ffdd66" stroke-width="2"/>';
   el.innerHTML = '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:' + (H + 4) + 'px">' + svg + '</svg>';
@@ -2923,6 +2945,159 @@ function v4Frame() {
     '<div class="tw-card"><div class="lbl">On stand now</div><div class="val">' + onstand + '</div></div>' +
     '<div class="tw-card"><div class="lbl">Inbound, next 60 min</div><div class="val">' + inbound + '</div></div>' +
     '<div class="tw-card"><div class="lbl">Departing, next 60 min</div><div class="val">' + depSoon + '</div></div></div>';
+}
+
+/* ===== Phase V4.3: continuous rolling-horizon optimizer =====
+   As the clock plays, at each cadence the optimizer re-solves a bounded window of the
+   feed and updates the live plan. It reuses the same glpk MIP idea as the V3 whole-apron
+   solve, but scoped to roughly 10-30 flights in [now, now + window], so each solve stays
+   in the tens-of-milliseconds class. Tiered stability (DP-4/DP-6) makes on-ground aircraft
+   expensive to move: a not-yet-arrived flight reroutes freely, a parked aircraft costs a
+   tow, a boarding aircraft costs a passenger-facing gate change. A flight commits (locks
+   its stand) at on-block minus the commit lead and is only moved for cause: its stand going
+   unserviceable. Every move is logged with a reason. The whole run is deterministic in
+   sim-time, so playback speed does not change the trace. */
+const V4_STAB = { inbound: 6, parked: 25, boarding: 60 };  // tiered cost of moving an aircraft off its current stand
+const v4sim = { optimize: false, assign: {}, moves: [], lastSolveAt: -1, solving: false, solves: 0, oos: new Set(), cost: 0 };
+
+function v4InitPlan() {
+  v4sim.assign = {};
+  FEED.filter(f => f.dir === 'arr' && f.plannedStand).forEach(f => v4sim.assign[f.id] = f.plannedStand);
+  v4sim.moves = []; v4sim.lastSolveAt = -1; v4sim.solves = 0; v4sim.cost = v4PlanCost();
+}
+function v4StandOf(f) { return v4sim.optimize ? (v4sim.assign[f.id] || f.plannedStand) : f.plannedStand; }
+function v4StandOk(f, s) {
+  // V4 baseline treats all 18 stands as available; the static V3 B16 fault does not leak in.
+  // Faults are injected into v4sim.oos by the disruption layer (V4.4).
+  if (!s || v4sim.oos.has(s.id)) return false;
+  if (CODE_NUM[s.code] < CODE_NUM[f.code]) return false;       // stand too small for the aircraft
+  if (s.zone !== 'M' && s.zone !== f.zone) return false;        // Schengen / non-Schengen separation
+  return true;
+}
+function v4CostFS(f, s) {
+  const remote = s.type === 'remote', sizeGap = CODE_NUM[s.code] - CODE_NUM[f.code];
+  const passenger = (f.pax / 100) * s.walk + (remote ? f.conPax * 0.4 : 0);
+  const schedule = (remote ? CONFIG.remotePenalty : 0) + sizeGap * CONFIG.sizeGapPenalty;
+  const handler = Math.abs(apronX(s) - HANDLER_BASE[f.handler]) * 1.5;
+  const w = CONFIG.weights;
+  return w.passenger * passenger + w.handler * handler + w.schedule * schedule;
+}
+function v4ArrPhase(f, t) {
+  const on = f.predOn, off = on + (f.dwell || 45);
+  if (t < on) return 'inbound';
+  if (t >= off) return 'departed';
+  if (t >= off - 20) return 'boarding';
+  return 'parked';
+}
+function v4IsCommitted(f, t) { return t >= f.predOn - CONFIG.commitLead; }
+function v4PlanCost() {
+  let c = 0;
+  FEED.filter(f => f.dir === 'arr').forEach(f => { const s = STANDS.find(x => x.id === v4sim.assign[f.id]); if (s) c += v4CostFS(f, s); });
+  return Math.round(c);
+}
+
+/* The decision set is bounded so each solve stays small and fast. Only the soonest
+   not-yet-committed flights are true binary decisions (capped). Committed flights hold
+   their stand as fixed occupancy, not decisions, which is a stronger form of stability
+   than a penalty. A committed flight becomes a forced decision only when its stand is
+   lost (DP-3). Flights beyond the cap stay on their planned stand this round and become
+   decisions later as the clock advances. This keeps the MIP in the same size class as the
+   V3 whole-apron solve and avoids pathologically hard set-packing instances. */
+const V4_DECISION_CAP = 16;
+async function v4Solve(t) {
+  const glpk = window.__glpk; if (!glpk || v4sim.solving) return;
+  v4sim.solving = true;
+  try {
+    const win = CONFIG.windowMin;
+    const windowArrs = FEED.filter(f => f.dir === 'arr' && f.plannedStand &&
+      (f.predOn + (f.dwell || 45)) > t && f.predOn < t + win);
+    if (!windowArrs.length) return;
+    const forced = windowArrs.filter(f => v4IsCommitted(f, t) && v4sim.assign[f.id] && v4sim.oos.has(v4sim.assign[f.id]));
+    const free = windowArrs.filter(f => !v4IsCommitted(f, t)).sort((a, b) => a.predOn - b.predOn).slice(0, V4_DECISION_CAP);
+    const decision = [...forced, ...free];
+    const decSet = new Set(decision.map(f => f.id));
+    const fixed = windowArrs.filter(f => !decSet.has(f.id));     // committed and far-out flights hold their stand
+
+    const blocked = {}; STANDS.forEach(s => blocked[s.id] = []);
+    fixed.forEach(f => { const sid = v4sim.assign[f.id]; if (sid && blocked[sid]) blocked[sid].push([f.predOn, f.predOn + (f.dwell || 45)]); });
+    const standFree = (f, s) => { const fo = f.predOn, fe = f.predOn + (f.dwell || 45); return !blocked[s.id].some(w => fo < w[1] && w[0] < fe); };
+
+    const objVars = [], binaries = [], subjectTo = [];
+    const elig = {};
+    decision.forEach(f => {
+      const cur = v4sim.assign[f.id], phase = v4ArrPhase(f, t), assignVars = [];
+      elig[f.id] = STANDS.filter(s => v4StandOk(f, s) && standFree(f, s));
+      elig[f.id].forEach(s => {
+        const v = 'x_' + f.id + '_' + s.id;
+        let coef = v4CostFS(f, s);
+        if (cur && cur !== s.id) coef += phase === 'boarding' ? V4_STAB.boarding : phase === 'parked' ? V4_STAB.parked : V4_STAB.inbound;
+        objVars.push({ name: v, coef }); binaries.push(v); assignVars.push({ name: v, coef: 1 });
+      });
+      const esc = 'x_' + f.id + '_ESC';                          // escape hatch keeps the model feasible
+      objVars.push({ name: esc, coef: CONFIG.escalateCost }); binaries.push(esc); assignVars.push({ name: esc, coef: 1 });
+      subjectTo.push({ name: 'a_' + f.id, vars: assignVars, bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 } });
+    });
+    STANDS.forEach(s => {
+      const cands = decision.filter(f => elig[f.id].includes(s));
+      for (let i = 0; i < cands.length; i++) for (let j = i + 1; j < cands.length; j++) {
+        const a = cands[i], b = cands[j];
+        if (a.predOn < b.predOn + (b.dwell || 45) && b.predOn < a.predOn + (a.dwell || 45))
+          subjectTo.push({ name: 'c_' + s.id + '_' + a.id + '_' + b.id, vars: [{ name: 'x_' + a.id + '_' + s.id, coef: 1 }, { name: 'x_' + b.id + '_' + s.id, coef: 1 }], bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 } });
+      }
+    });
+    const lp = { name: 'roll', objective: { direction: glpk.GLP_MIN, name: 'cost', vars: objVars }, subjectTo, binaries };
+    const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+    decision.forEach(f => {
+      let chosen = null;
+      elig[f.id].forEach(s => { if (res.result.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; });
+      if (chosen && chosen !== v4sim.assign[f.id]) {
+        const from = v4sim.assign[f.id];
+        const reason = from && v4sim.oos.has(from) ? 'stand unserviceable' : v4IsCommitted(f, t) ? 'forced re-decide' : 'optimization';
+        v4sim.moves.push({ t, id: f.id, from: from || '—', to: chosen, reason, phase: v4ArrPhase(f, t) });
+        v4sim.assign[f.id] = chosen;
+      }
+    });
+    v4sim.solves++; v4sim.cost = v4PlanCost();
+  } catch (e) { console.error('v4Solve', e); }
+  finally { v4sim.solving = false; }
+}
+
+function v4MaybeSolve() {
+  if (!v4sim.optimize || v4sim.solving) return;
+  const cad = Math.max(1, CONFIG.optCadence);
+  const boundary = Math.floor(v4.now / cad) * cad;
+  if (boundary > v4sim.lastSolveAt) {
+    v4sim.lastSolveAt = boundary;
+    v4Solve(boundary).then(() => { v4Gantt(); v4OptPanel(); v4Frame(); });
+  }
+}
+
+function v4ToggleOptimize() {
+  v4sim.optimize = !v4sim.optimize;
+  if (v4sim.optimize) { v4InitPlan(); v4sim.lastSolveAt = -1; v4MaybeSolve(); }
+  v4Render();
+}
+
+function v4OptPanel() {
+  const el = document.getElementById('feedOpt'); if (!el) return;
+  if (!v4sim.optimize) {
+    el.innerHTML = '<p class="hint">Continuous optimization is off. The feed shows the static planned allocation. Turn it on to let the optimizer re-solve the rolling window as the clock advances, holding committed aircraft and moving on-ground aircraft only for cause.</p>';
+    return;
+  }
+  const t = v4.now;
+  const committed = FEED.filter(f => f.dir === 'arr' && f.plannedStand && f.predOn + (f.dwell || 45) > t && v4IsCommitted(f, t)).length;
+  const recent = v4sim.moves.slice(-6).reverse();
+  const movesHtml = recent.length
+    ? '<table class="mini"><tr><th>Time</th><th>Flight</th><th>Move</th><th>Reason</th></tr>' +
+      recent.map(m => '<tr><td>' + v4fmt(m.t) + '</td><td>' + m.id + '</td><td>' + m.from + ' &rarr; ' + m.to + '</td><td>' + m.reason + '</td></tr>').join('') + '</table>'
+    : '<p class="hint">No reassignments yet. With no disruption, the optimizer reproduces the planned allocation.</p>';
+  el.innerHTML =
+    '<div class="tw-cards">' +
+    '<div class="tw-card"><div class="lbl">Re-optimizations</div><div class="val">' + v4sim.solves + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Committed (locked)</div><div class="val">' + committed + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Reassignments</div><div class="val">' + v4sim.moves.length + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Plan cost <small>weighted</small></div><div class="val">' + v4sim.cost + '</div></div></div>' +
+    '<div class="opt-moves"><h4>Reassignment log <span class="band">most recent first</span></h4>' + movesHtml + '</div>';
 }
 
 const PANE_TITLES = {
