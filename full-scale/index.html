@@ -264,6 +264,15 @@
   .tw-card .val small { font-size: 12px; color: var(--muted); font-family: 'Open Sans', sans-serif; }
   .tw-card .val.warn { color: #8a6d00; } .tw-card .val.crit { color: var(--evening); }
   .tw-card svg { display: block; margin-top: 5px; }
+  #feedNow .tw-cards { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 1080px) { #feedNow .tw-cards { grid-template-columns: repeat(2, 1fr); } }
+  .feed-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow); margin-bottom: 16px; }
+  .feed-bar .btn-ghost { background: #f6f8fd; color: var(--midnight); border: 1px solid var(--border); border-radius: 8px; padding: 9px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
+  .feed-scrub { flex: 1 1 240px; min-width: 180px; accent-color: var(--twilight); }
+  .feed-clock { font-family: 'CPH Airfield', 'Open Sans', sans-serif; font-size: 16px; color: var(--midnight); font-variant-numeric: tabular-nums; min-width: 118px; text-align: center; }
+  .feed-speed { display: inline-flex; gap: 4px; }
+  .feed-speed button { background: #f6f8fd; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; font-variant-numeric: tabular-nums; cursor: pointer; color: var(--muted); }
+  .feed-speed button.on { background: var(--midnight); color: #fff; border-color: var(--midnight); }
   .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .evt:last-child { border-bottom: none; }
   .evt.future { opacity: 0.38; }
@@ -427,6 +436,7 @@
 
     <div class="tabs">
       <div class="tab active" data-tab="apron" onclick="showTab('apron')">Apron</div>
+      <div class="tab" data-tab="feed" onclick="showTab('feed')">48h feed</div>
       <div class="tab" data-tab="flights" onclick="showTab('flights')">Flights<span class="pill-n" id="flightTabN">0</span></div>
       <div class="tab" data-tab="optimize" onclick="showTab('optimize')">Optimize<span class="pill-n" id="optTabN">0</span></div>
       <div class="tab" data-tab="pareto" onclick="showTab('pareto')">Trade-offs</div>
@@ -441,6 +451,11 @@
     <section class="tabpane active" id="pane-apron">
       <div id="apronView"></div>
       <p class="note"><b>Read-only.</b> This board is the live picture. The Optimize, Trade-offs, and Digital twin tabs all read from exactly this data. The system proposes, a person accepts, and every committed assignment is revalidated continuously against this picture.</p>
+    </section>
+
+    <section class="tabpane" id="pane-feed">
+      <p class="opt-intro">A full 48-hour schedule on 18 stands, generated with realistic diurnal traffic, rotation chains, and propagated early-turnaround delays. Press play to run the operating day forward at one simulated minute per real second, or scrub to any point. The live picture below the timeline is derived from the clock. This feed is the V4 backbone the continuous optimizer and the realized-cost ledger build on.</p>
+      <div id="feedUI"></div>
     </section>
 
     <section class="tabpane" id="pane-flights">
@@ -695,6 +710,84 @@ const STANDS = [
   { id: 'R14', type: 'remote', code: 'C', zone: 'M', belt: 'Remote belt', walk: 26, oos: false },
   { id: 'R16', type: 'remote', code: 'D', zone: 'M', belt: 'Remote belt', walk: 24, oos: false },
 ];
+
+/* ===== Phase V4.1: 48-hour schedule generator =====
+   Deterministic and seeded. Produces ~250 arrivals and their linked departures across
+   48 hours (sim-minutes 0..2880) on the 18 stands, with a diurnal traffic pattern,
+   aircraft rotation chains, and seeded delays in early-morning turnarounds that
+   propagate downstream ("Forsinkelser i tidlige turnarounds"). Synthetic data. */
+const SIM_HORIZON = 48 * 60;   // 2880 sim-minutes
+const SCHED_AC = [
+  { ac: 'A320', code: 'C', pax: 174, turn: 50 }, { ac: 'A319', code: 'C', pax: 141, turn: 45 },
+  { ac: 'B738', code: 'C', pax: 186, turn: 50 }, { ac: 'A21N', code: 'C', pax: 206, turn: 55 },
+  { ac: 'E190', code: 'C', pax: 106, turn: 40 }, { ac: 'AT76', code: 'C', pax: 78, turn: 35 },
+  { ac: 'A20N', code: 'C', pax: 180, turn: 50 }, { ac: 'A359', code: 'E', pax: 314, turn: 90 },
+  { ac: 'B788', code: 'E', pax: 256, turn: 85 },
+];
+const SCHED_CAR = [
+  { c: 'SAS', pre: 'SK', h: 'Aviator' }, { c: 'Norwegian', pre: 'DY', h: 'Aviator' },
+  { c: 'Lufthansa', pre: 'LH', h: 'Menzies' }, { c: 'KLM', pre: 'KL', h: 'Menzies' },
+  { c: 'Finnair', pre: 'AY', h: 'Menzies' }, { c: 'Eurowings', pre: 'EW', h: 'SGH' },
+  { c: 'Wideroe', pre: 'WF', h: 'SGH' }, { c: 'British A.', pre: 'BA', h: 'Menzies' },
+  { c: 'Austrian', pre: 'OS', h: 'SGH' }, { c: 'Swiss', pre: 'LX', h: 'Menzies' },
+];
+const ROUTES_S = ['OSL', 'ARN', 'GOT', 'BGO', 'TRD', 'HEL', 'FRA', 'MUC', 'AMS', 'CDG', 'VIE', 'ZRH', 'BCN', 'MAD', 'MXP', 'DUS', 'HAM', 'GVA'];
+const ROUTES_N = ['LHR', 'MAN', 'DUB', 'EDI', 'IST', 'DXB', 'DOH', 'JFK', 'EWR', 'SIN'];
+const DIURNAL = [0.10, 0.05, 0.05, 0.10, 0.35, 0.85, 1.45, 1.60, 1.30, 1.05, 0.95, 1.05, 1.20, 1.10, 1.00, 1.10, 1.45, 1.55, 1.30, 1.00, 0.70, 0.45, 0.30, 0.18];
+
+function generate48hSchedule() {
+  const rng = mulberry32(20260612);
+  const pick = a => a[Math.floor(rng() * a.length)];
+  const weightAt = m => DIURNAL[Math.floor((m % 1440) / 60)];
+  function nextEntry() { for (let k = 0; k < 80; k++) { const m = Math.floor(rng() * SIM_HORIZON); if (rng() < weightAt(m) / 1.6) return m; } return Math.floor(rng() * SIM_HORIZON); }
+  const flights = []; let tail = 0, arrivals = 0; const TARGET = 250;
+  while (arrivals < TARGET) {
+    const acDef = pick(SCHED_AC), car = pick(SCHED_CAR);
+    const tailId = 'OY-' + String.fromCharCode(65 + tail % 26) + String.fromCharCode(65 + Math.floor(tail / 26) % 26) + (tail % 10); tail++;
+    const legs = 1 + Math.floor(rng() * 4);
+    let schedOn = nextEntry(), carried = 0;
+    for (let leg = 0; leg < legs && schedOn < SIM_HORIZON; leg++) {
+      if (arrivals >= TARGET + 20) break;
+      const zone = acDef.code === 'E' ? (rng() < 0.6 ? 'N' : 'S') : (rng() < 0.28 ? 'N' : 'S');
+      const from = pick(zone === 'N' ? ROUTES_N : ROUTES_S);
+      const hod = schedOn % 1440;
+      const extraTurn = (leg === 0 && hod >= 300 && hod <= 540 && rng() < 0.30) ? 30 + Math.floor(rng() * 45) : 0;
+      const baseTurn = acDef.turn + Math.floor(rng() * 12), turn = baseTurn + extraTurn;
+      const predOn = schedOn + carried;
+      const pax = Math.round(acDef.pax * (0.7 + rng() * 0.3)), conPax = Math.round(pax * (0.12 + rng() * 0.25));
+      const band = 3 + Math.floor(rng() * 7);
+      const arr = { id: car.pre + (100 + Math.floor(rng() * 8899)) + (leg ? 'L' + leg : ''), tail: tailId, carrier: car.c, from, dir: 'arr',
+        ac: acDef.ac, code: acDef.code, zone, handler: car.h, schedOn, predOn, predBand: band, dwell: turn, pax, bags: Math.round(pax * 0.82),
+        conPax, minCon: 30 + Math.floor(rng() * 25), rotLeg: leg, delayMin: carried };
+      flights.push(arr); arrivals++;
+      const to = pick(zone === 'N' ? ROUTES_N : ROUTES_S);
+      const dep = { id: car.pre + (100 + Math.floor(rng() * 8899)) + 'D' + leg, tail: tailId, carrier: car.c, to, dir: 'dep', ac: acDef.ac,
+        code: acDef.code, zone, handler: car.h, schedOn: schedOn + baseTurn, predOn: predOn + turn, predBand: band, dwell: 0, pax,
+        bags: arr.bags, conPax: 0, minCon: 0, rotLeg: leg, arrId: arr.id, delayMin: (predOn + turn) - (schedOn + baseTurn) };
+      arr.depId = dep.id; flights.push(dep);
+      carried = Math.max(0, (predOn + turn) - (schedOn + baseTurn) - 12);   // recover ~12 min of buffer per leg
+      schedOn = schedOn + baseTurn + 60 + Math.floor(rng() * 200);
+      if ((schedOn % 1440) < 300) break;   // a deep-night next leg means the aircraft remains overnight instead
+    }
+  }
+  flights.sort((a, b) => a.predOn - b.predOn);
+  assignPlannedStands(flights);
+  return flights;
+}
+
+// Greedy planned stands: arrivals reserve [on-block, off-block]; departures inherit their arrival's stand.
+function assignPlannedStands(flights) {
+  const occ = {}; STANDS.forEach(s => occ[s.id] = []);
+  const byId = {}; flights.forEach(f => byId[f.id] = f);
+  flights.filter(f => f.dir === 'arr').forEach(f => {
+    const fs = f.predOn, fe = f.predOn + (f.dwell || 45);
+    const cand = STANDS.find(s => CODE_NUM[s.code] >= CODE_NUM[f.code] && (s.zone === 'M' || s.zone === f.zone) &&
+      !occ[s.id].some(w => fs < w[1] + 5 && w[0] < fe + 5));
+    f.plannedStand = cand ? cand.id : null;
+    if (cand) occ[cand.id].push([fs, fe]);
+  });
+  flights.filter(f => f.dir === 'dep').forEach(f => { const a = byId[f.arrId]; f.plannedStand = a ? a.plannedStand : null; });
+}
 
 /* Flights.
    needsRealloc = true  -> part of the disruption set the optimizer must place.
@@ -2740,8 +2833,101 @@ function togglePlay() {
   }
 }
 
+/* ===================== Phase V4.2: 48-hour feed engine =====================
+   The 48-hour schedule plays forward. The clock is the source of truth; the live
+   picture (inbound / on-stand / departed) is derived from it. Playback paces sim-time
+   over real-time: one sim-minute per one real-second at base, scaled by the speed slider.
+   The V3 snapshot tabs are untouched; this feed is the V4 backbone the continuous
+   optimizer (V4.3) and realized-cost ledger (V4.6) build on. */
+let FEED = generate48hSchedule();
+const V4_SPEEDS = [0.1, 0.25, 0.5, 1, 2, 5, 10];
+const v4 = { now: 0, playing: false, speedIdx: 3, raf: null, lastTs: null };
+
+function v4fmt(m) { const t = Math.max(0, Math.min(SIM_HORIZON, m)); const day = Math.floor(t / 1440) + 1; const hm = Math.floor(t % 1440); return 'Day ' + day + ' ' + pad(Math.floor(hm / 60)) + ':' + pad(Math.floor(hm % 60)); }
+
+function flightPhase(f, t) {
+  if (f.dir === 'arr') { const on = f.predOn, off = on + (f.dwell || 45); return t < on ? 'inbound' : t < off ? 'onstand' : 'departed'; }
+  return t < f.predOn ? 'scheduled' : 'departed';
+}
+
+function v4Tick(ts) {
+  if (!v4.playing) return;
+  if (v4.lastTs == null) v4.lastTs = ts;
+  const dtReal = Math.min(0.25, (ts - v4.lastTs) / 1000); v4.lastTs = ts;   // seconds, capped to avoid jumps on refocus
+  v4.now = Math.min(SIM_HORIZON, v4.now + dtReal * V4_SPEEDS[v4.speedIdx]);  // 1 sim-min per real-sec at base
+  v4Frame();
+  if (v4.now >= SIM_HORIZON) { v4.playing = false; v4.raf = null; v4Controls(); }
+  else v4.raf = requestAnimationFrame(v4Tick);
+}
+function v4Play() {
+  if (v4.playing) { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; }
+  else { if (v4.now >= SIM_HORIZON) v4.now = 0; v4.playing = true; v4.lastTs = null; v4.raf = requestAnimationFrame(v4Tick); }
+  v4Controls();
+}
+function v4Scrub(m) { v4.now = Math.max(0, Math.min(SIM_HORIZON, +m)); v4Frame(); }
+function v4SetSpeed(i) { v4.speedIdx = +i; v4Controls(); }
+function v4Reset() { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; v4.now = 0; v4Render(); }
+
+function v4Render() {
+  const el = document.getElementById('feedUI'); if (!el) return;
+  el.innerHTML =
+    '<div id="feedControls"></div>' +
+    '<div id="feedNow"></div>' +
+    '<div class="gantt-box"><h4>48-hour stand occupancy <span class="band">planned schedule, ' + FEED.filter(f => f.dir === 'arr').length + ' arrivals on 18 stands</span></h4>' +
+    '<p class="hint">Each bar is a turnaround on its planned stand. Deep blue is a flight carrying a propagated early-turnaround delay. The amber line is the current feed time.</p>' +
+    '<div id="feedGantt"></div></div>';
+  v4Controls(); v4Gantt(); v4Frame();
+}
+
+function v4Controls() {
+  const el = document.getElementById('feedControls'); if (!el) return;
+  el.innerHTML = '<div class="feed-bar">' +
+    '<button class="twin-play" onclick="v4Play()">' + (v4.playing ? 'Pause' : 'Play') + '</button>' +
+    '<button class="btn-ghost" onclick="v4Reset()">Reset</button>' +
+    '<input type="range" class="feed-scrub" min="0" max="' + SIM_HORIZON + '" value="' + Math.round(v4.now) + '" oninput="v4Scrub(this.value)">' +
+    '<span class="feed-clock">' + v4fmt(v4.now) + '</span>' +
+    '<span class="feed-speed">' + V4_SPEEDS.map((s, i) => '<button class="' + (i === v4.speedIdx ? 'on' : '') + '" onclick="v4SetSpeed(' + i + ')">' + s + 'x</button>').join('') + '</span></div>';
+}
+
+function v4Gantt() {
+  const el = document.getElementById('feedGantt'); if (!el) return;
+  const stands = STANDS.map(s => s.id);
+  const W = 1100, rowH = 16, padL = 46, padT = 22, padB = 4, H = padT + stands.length * rowH + padB;
+  const x = m => padL + m / SIM_HORIZON * (W - padL - 10);
+  const rowY = {}; stands.forEach((sid, i) => rowY[sid] = padT + i * rowH);
+  let svg = '';
+  for (let d = 0; d <= 48; d += 6) { const xx = x(d * 60); svg += '<line x1="' + xx.toFixed(1) + '" y1="' + padT + '" x2="' + xx.toFixed(1) + '" y2="' + (H - padB) + '" stroke="#eef2fa"/><text x="' + xx.toFixed(1) + '" y="14" font-size="9.5" fill="#6b7299" text-anchor="middle">' + (d < 24 ? 'D1 ' + pad(d) : 'D2 ' + pad(d - 24)) + '</text>'; }
+  stands.forEach(sid => { const y = rowY[sid]; svg += '<text x="6" y="' + (y + rowH / 2 + 3) + '" font-size="9" font-weight="700" fill="#1b2350">' + sid + '</text>'; });
+  FEED.filter(f => f.dir === 'arr' && f.plannedStand && rowY[f.plannedStand] != null).forEach(f => {
+    const y = rowY[f.plannedStand], bx = x(f.predOn), bw = Math.max(1.2, x(f.predOn + (f.dwell || 45)) - bx);
+    const fill = f.delayMin > 0 ? '#170d81' : f.zone === 'N' ? '#88a8ed' : '#4e55ab';
+    svg += '<rect x="' + bx.toFixed(1) + '" y="' + (y + 2) + '" width="' + bw.toFixed(1) + '" height="' + (rowH - 4) + '" rx="1.5" fill="' + fill + '"/>';
+  });
+  svg += '<line id="feedNowLine" x1="0" y1="' + padT + '" x2="0" y2="' + (H - padB) + '" stroke="#ffdd66" stroke-width="2"/>';
+  el.innerHTML = '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:' + (H + 4) + 'px">' + svg + '</svg>';
+  el._geom = { x0: padL, w: W - padL - 10 };
+}
+
+function v4Frame() {
+  const cl = document.querySelector('#feedControls .feed-clock'); if (cl) cl.textContent = v4fmt(v4.now);
+  const sc = document.querySelector('#feedControls .feed-scrub'); if (sc && document.activeElement !== sc) sc.value = Math.round(v4.now);
+  const g = document.getElementById('feedGantt'), nl = document.getElementById('feedNowLine');
+  if (g && g._geom && nl) { const nx = g._geom.x0 + v4.now / SIM_HORIZON * g._geom.w; nl.setAttribute('x1', nx.toFixed(1)); nl.setAttribute('x2', nx.toFixed(1)); }
+  const now = document.getElementById('feedNow'); if (!now) return;
+  const t = v4.now;
+  const onstand = FEED.filter(f => f.dir === 'arr' && flightPhase(f, t) === 'onstand').length;
+  const inbound = FEED.filter(f => f.dir === 'arr' && f.predOn >= t && f.predOn < t + 60).length;
+  const depSoon = FEED.filter(f => f.dir === 'dep' && f.predOn >= t && f.predOn < t + 60).length;
+  now.innerHTML = '<div class="tw-cards">' +
+    '<div class="tw-card"><div class="lbl">Feed time</div><div class="val">' + v4fmt(t) + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">On stand now</div><div class="val">' + onstand + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Inbound, next 60 min</div><div class="val">' + inbound + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Departing, next 60 min</div><div class="val">' + depSoon + '</div></div></div>';
+}
+
 const PANE_TITLES = {
   apron: ['Apron picture', 'Live snapshot of every stand and the rolling traffic window'],
+  feed: ['48-hour feed', 'The schedule plays forward; the live picture is derived from the clock'],
   flights: ['Flight schedule', 'Scheduled against ML-predicted on-block times'],
   optimize: ['Whole-apron optimization', 'One pass, solved as a binary mixed-integer program'],
   pareto: ['Trade-off front', 'Non-dominated strategies, the human chooses which to accept'],
@@ -2758,6 +2944,8 @@ function showTab(name) {
   document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
   const t = PANE_TITLES[name];
   if (t) { document.getElementById('paneTitle').textContent = t[0]; document.getElementById('paneSub').textContent = t[1]; }
+  if (name === 'feed') v4Render();
+  else if (v4.playing) { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; }
 }
 
 render();
