@@ -280,6 +280,14 @@
   table.mini { width: 100%; border-collapse: collapse; font-size: 12px; }
   table.mini th { text-align: left; color: var(--muted); font-weight: 600; padding: 3px 8px 5px 0; border-bottom: 1px solid var(--border); }
   table.mini td { padding: 4px 8px 4px 0; border-bottom: 1px solid #f0f3fa; font-variant-numeric: tabular-nums; }
+  .disrupt-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow); margin-bottom: 18px; }
+  .disrupt-box h4 { margin: 0 0 10px; font-size: 13px; color: var(--midnight); }
+  .disrupt-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .disrupt-lbl { font-size: 11.5px; color: var(--muted); font-weight: 600; margin-right: 2px; }
+  .disrupt-btn { background: #fff4e0; border: 1px solid #f0d49a; color: #8a5a00; border-radius: 7px; padding: 7px 11px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .disrupt-btn:hover { background: #ffe9c2; }
+  .ds { font-weight: 600; font-size: 11px; padding: 1px 7px; border-radius: 10px; }
+  .ds.on { background: #fde7e7; color: #a11; } .ds.wait { background: #eef2fa; color: var(--muted); } .ds.done { background: #e6f3ea; color: #2a7; }
   .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .evt:last-child { border-bottom: none; }
   .evt.future { opacity: 0.38; }
@@ -2870,6 +2878,7 @@ function v4Tick(ts) {
   const dtReal = Math.min(0.25, (ts - v4.lastTs) / 1000); v4.lastTs = ts;   // seconds, capped to avoid jumps on refocus
   v4.now = Math.min(SIM_HORIZON, v4.now + dtReal * V4_SPEEDS[v4.speedIdx]);  // 1 sim-min per real-sec at base
   v4Frame();
+  if (v4ApplyDue(v4.now)) { v4Gantt(); v4DisruptPanel(); if (v4sim.optimize) v4sim.lastSolveAt = -1; }
   v4MaybeSolve();
   if (v4.now >= SIM_HORIZON) { v4.playing = false; v4.raf = null; v4Controls(); }
   else v4.raf = requestAnimationFrame(v4Tick);
@@ -2879,9 +2888,15 @@ function v4Play() {
   else { if (v4.now >= SIM_HORIZON) v4.now = 0; v4.playing = true; v4.lastTs = null; v4.raf = requestAnimationFrame(v4Tick); }
   v4Controls();
 }
-function v4Scrub(m) { v4.now = Math.max(0, Math.min(SIM_HORIZON, +m)); v4Frame(); if (v4sim.optimize) v4MaybeSolve(); }
+function v4Scrub(m) { v4.now = Math.max(0, Math.min(SIM_HORIZON, +m)); if (v4ApplyDue(v4.now) && v4sim.optimize) v4sim.lastSolveAt = -1; v4Frame(); if (v4sim.optimize) v4MaybeSolve(); v4DisruptPanel(); v4Gantt(); }
 function v4SetSpeed(i) { v4.speedIdx = +i; v4Controls(); }
-function v4Reset() { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; v4.now = 0; if (v4sim.optimize) v4InitPlan(); v4Render(); }
+function v4Reset() {
+  v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; v4.now = 0;
+  FEED = generate48hSchedule(); v4sim.oos.clear(); v4sim.handlerCap = {};
+  v4sim.disruptions.forEach(d => { d.applied = false; d.cleared = false; });   // re-arm the set so the rerun replays it
+  if (v4sim.optimize) v4InitPlan();
+  v4Render();
+}
 
 function v4Render() {
   const el = document.getElementById('feedUI'); if (!el) return;
@@ -2890,12 +2905,13 @@ function v4Render() {
     '<div id="feedControls"></div>' +
     '<div class="opt-toggle"><button class="twin-play ' + (v4sim.optimize ? 'on' : '') + '" onclick="v4ToggleOptimize()">Continuous optimization: ' + (v4sim.optimize ? 'ON' : 'OFF') + '</button>' +
     '<span class="hint">Re-optimize every ' + CONFIG.optCadence + ' min over a ' + (CONFIG.windowMin / 60).toFixed(CONFIG.windowMin % 60 ? 1 : 0) + ' h window; commit ' + CONFIG.commitLead + ' min before on-block. Change these in Config.</span></div>' +
+    '<div class="disrupt-box"><h4>Inject disruptions <span class="band">applied as the clock passes them; the optimizer reacts on the next cadence</span></h4><div id="feedDisrupt"></div></div>' +
     '<div id="feedNow"></div>' +
     '<div id="feedOpt"></div>' +
     '<div class="gantt-box"><h4>48-hour stand occupancy <span class="band">' + ganttSub + ', ' + FEED.filter(f => f.dir === 'arr').length + ' arrivals on 18 stands</span></h4>' +
     '<p class="hint">Each bar is a turnaround on its stand. Deep blue is a flight carrying a propagated early-turnaround delay; an amber outline marks a flight the optimizer reassigned. The amber line is the current feed time.</p>' +
     '<div id="feedGantt"></div></div>';
-  v4Controls(); v4OptPanel(); v4Gantt(); v4Frame();
+  v4Controls(); v4OptPanel(); v4DisruptPanel(); v4Gantt(); v4Frame();
 }
 
 function v4Controls() {
@@ -2958,7 +2974,7 @@ function v4Frame() {
    unserviceable. Every move is logged with a reason. The whole run is deterministic in
    sim-time, so playback speed does not change the trace. */
 const V4_STAB = { inbound: 6, parked: 25, boarding: 60 };  // tiered cost of moving an aircraft off its current stand
-const v4sim = { optimize: false, assign: {}, moves: [], lastSolveAt: -1, solving: false, solves: 0, oos: new Set(), cost: 0 };
+const v4sim = { optimize: false, assign: {}, moves: [], lastSolveAt: -1, solving: false, solves: 0, oos: new Set(), cost: 0, disruptions: [], handlerCap: {} };
 
 function v4InitPlan() {
   v4sim.assign = {};
@@ -3098,6 +3114,95 @@ function v4OptPanel() {
     '<div class="tw-card"><div class="lbl">Reassignments</div><div class="val">' + v4sim.moves.length + '</div></div>' +
     '<div class="tw-card"><div class="lbl">Plan cost <small>weighted</small></div><div class="val">' + v4sim.cost + '</div></div></div>' +
     '<div class="opt-moves"><h4>Reassignment log <span class="band">most recent first</span></h4>' + movesHtml + '</div>';
+}
+
+/* ===== Phase V4.4: disruption injection over 48 hours =====
+   Six injectable types. Each is recorded as a {type, time, target, params, duration}
+   disruption so a saved run can replay an identical set (FR-X4). At the current feed
+   time the operator injects a disruption; as the clock passes its time it mutates the
+   live picture (a stand into v4sim.oos, or a flight's predOn / dwell in FEED) and the
+   continuous optimizer reacts on the next cadence. Stand-offline and handler-cap have a
+   duration and restore themselves. Handler-cap is logged and costed but cannot be relieved
+   by stand reallocation (the handler is fixed per flight), so the optimizer does not
+   pretend to fix it. Reset regenerates the deterministic FEED and re-arms the set, so a
+   rerun replays it; Clear empties it. */
+const V4_DISRUPT = {
+  standOffline: { label: 'Stand offline', dur: 120 },
+  handlerCap:   { label: 'Handler capacity cut', dur: 120 },
+  earlyArrival: { label: 'Early arrival', min: 25 },
+  lateArrival:  { label: 'Late arrival', min: 40 },
+  depDelay:     { label: 'Departure delay', min: 35 },
+  longerTurn:   { label: 'Longer turnaround', min: 40 },
+};
+let V4_DID = 0;
+function v4NextArr(t) { return FEED.filter(f => f.dir === 'arr' && f.predOn > t && f.predOn < t + 180 && f.plannedStand).sort((a, b) => a.predOn - b.predOn)[0]; }
+function v4NextDep(t) { return FEED.filter(f => f.dir === 'dep' && f.predOn > t && f.predOn < t + 180).sort((a, b) => a.predOn - b.predOn)[0]; }
+function v4PickBusyStand(t) {
+  const on = FEED.filter(f => f.dir === 'arr' && t >= f.predOn && t < f.predOn + (f.dwell || 45)).map(v4StandOf)
+    .filter(sid => { const s = STANDS.find(x => x.id === sid); return s && s.type === 'contact' && !v4sim.oos.has(sid); });
+  return on[0] || STANDS.filter(s => s.type === 'contact' && !v4sim.oos.has(s.id)).map(s => s.id)[0] || null;
+}
+function v4InjectType(type) {
+  const t = Math.round(v4.now), cfg = V4_DISRUPT[type];
+  let target = null, params = {}, desc = '', duration = null;
+  if (type === 'standOffline') { target = v4PickBusyStand(t); duration = cfg.dur; desc = 'Stand ' + target + ' offline for ' + duration + ' min'; }
+  else if (type === 'handlerCap') {
+    const cnt = {}; FEED.filter(f => f.dir === 'arr' && f.predOn > t && f.predOn < t + 120).forEach(f => cnt[f.handler] = (cnt[f.handler] || 0) + 1);
+    target = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || 'Aviator';
+    params = { cap: Math.max(1, (handlerCapacity(target) || 4) - 2) }; duration = cfg.dur;
+    desc = target + ' capacity cut to ' + params.cap + ' for ' + duration + ' min';
+  } else {
+    const f = type === 'depDelay' ? v4NextDep(t) : v4NextArr(t);
+    if (!f) return; target = f.id; params = { min: cfg.min }; desc = cfg.label + ': ' + f.id + ' by ' + cfg.min + ' min';
+  }
+  if (!target) return;
+  const d = { id: 'D' + (++V4_DID), type, time: t, target, params, duration, applied: false, cleared: false, desc };
+  v4sim.disruptions.push(d);
+  v4ApplyDue(t);
+  if (v4sim.optimize) { v4sim.lastSolveAt = -1; v4MaybeSolve(); }
+  v4Render();
+}
+function v4ApplyOne(d) {
+  const f = FEED.find(x => x.id === d.target);
+  if (d.type === 'standOffline') v4sim.oos.add(d.target);
+  else if (d.type === 'handlerCap') v4sim.handlerCap[d.target] = d.params.cap;
+  else if (f && d.type === 'earlyArrival') { f.predOn = Math.max(0, f.predOn - d.params.min); }
+  else if (f && d.type === 'lateArrival') { f.predOn += d.params.min; f.delayMin = (f.delayMin || 0) + d.params.min; }
+  else if (f && d.type === 'depDelay') { f.predOn += d.params.min; f.delayMin = (f.delayMin || 0) + d.params.min; }
+  else if (f && d.type === 'longerTurn') { f.dwell = (f.dwell || 45) + d.params.min; }
+}
+function v4ClearOne(d) {
+  if (d.type === 'standOffline') v4sim.oos.delete(d.target);
+  else if (d.type === 'handlerCap') delete v4sim.handlerCap[d.target];
+}
+function v4ApplyDue(t) {
+  let changed = false;
+  v4sim.disruptions.forEach(d => {
+    if (!d.applied && d.time <= t) { v4ApplyOne(d); d.applied = true; changed = true; }
+    if (d.applied && !d.cleared && d.duration && d.time + d.duration <= t) { v4ClearOne(d); d.cleared = true; changed = true; }
+  });
+  return changed;
+}
+function v4ClearDisruptions() {
+  v4sim.disruptions.forEach(d => { if (d.applied && !d.cleared) v4ClearOne(d); });
+  v4sim.disruptions = []; v4sim.oos.clear(); v4sim.handlerCap = {};
+  FEED = generate48hSchedule();                 // restore clean timings the in-place mutations changed
+  if (v4sim.optimize) { v4InitPlan(); v4sim.lastSolveAt = -1; v4MaybeSolve(); }
+  v4Render();
+}
+function v4DisruptPanel() {
+  const el = document.getElementById('feedDisrupt'); if (!el) return;
+  const btn = type => '<button class="disrupt-btn" onclick="v4InjectType(\'' + type + '\')">' + V4_DISRUPT[type].label + '</button>';
+  const order = ['standOffline', 'handlerCap', 'earlyArrival', 'lateArrival', 'depDelay', 'longerTurn'];
+  const status = d => d.cleared ? '<span class="ds done">cleared</span>' : d.applied ? '<span class="ds on">active</span>' : '<span class="ds wait">pending</span>';
+  const rows = v4sim.disruptions.slice().reverse().map(d =>
+    '<tr><td>' + v4fmt(d.time) + '</td><td>' + V4_DISRUPT[d.type].label + '</td><td>' + d.target + '</td><td>' + status(d) + '</td></tr>').join('');
+  el.innerHTML =
+    '<div class="disrupt-bar"><span class="disrupt-lbl">Inject at ' + v4fmt(v4.now) + '</span>' + order.map(btn).join('') +
+    (v4sim.disruptions.length ? '<button class="btn-ghost" onclick="v4ClearDisruptions()">Clear all</button>' : '') + '</div>' +
+    (v4sim.disruptions.length
+      ? '<table class="mini"><tr><th>Time</th><th>Disruption</th><th>Target</th><th>Status</th></tr>' + rows + '</table>'
+      : '<p class="hint">No disruptions injected. Inject one at the current feed time; with continuous optimization on, the optimizer reacts on the next cadence. A stand offline forces a reassignment; a handler capacity cut is logged but cannot be relieved by moving stands.</p>');
 }
 
 const PANE_TITLES = {
