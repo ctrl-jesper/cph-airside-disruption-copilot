@@ -3122,6 +3122,36 @@ function v4PlanCost() {
   return Math.round(c);
 }
 
+/* ===== U2: the FEED-derived operating picture =====
+   Pure functions of the feed clock t and v4sim. Every unified operational surface (sidebar,
+   apron, flights, optimize, twin) reads the picture from these instead of the retired V3
+   `state`/`FLIGHTS`. Occupancy of an arrival is [predOn, predOn + dwell] on its realized
+   stand (v4StandOf); a stand is unavailable if it is offline at t (records). */
+function feedArrivalsInWindow(t, win) {
+  return FEED.filter(f => f.dir === 'arr' && f.plannedStand && (f.predOn + (f.dwell || 45)) > t && f.predOn < t + win);
+}
+function onStandAt(t) {
+  return FEED.filter(f => f.dir === 'arr' && t >= f.predOn && t < f.predOn + (f.dwell || 45));
+}
+function standOccupant(standId, t) {
+  return onStandAt(t).find(f => v4StandOf(f) === standId) || null;
+}
+function standOfflineNow(standId, t) { return v4sim.oos.has(standId) || v4StandOfflineAt(standId, t); }
+function freeStandsAt(t) {
+  const occupied = new Set(onStandAt(t).map(v4StandOf));
+  return STANDS.filter(s => !occupied.has(s.id) && !standOfflineNow(s.id, t));
+}
+function needsDecision(t) {
+  return feedArrivalsInWindow(t, CONFIG.windowMin).filter(f => f.predOn >= t && !v4IsCommitted(f, t));
+}
+// Flights touching a window around t, arrivals and their linked departures, for the flights list.
+function feedFlightsAround(t, back, fwd) {
+  return FEED.filter(f => {
+    const end = f.dir === 'arr' ? f.predOn + (f.dwell || 45) : f.predOn;
+    return end > t - back && f.predOn < t + fwd;
+  });
+}
+
 /* The decision set is bounded so each solve stays small and fast. Only the soonest
    not-yet-committed flights are true binary decisions (capped). Committed flights hold
    their stand as fixed occupancy, not decisions, which is a stronger form of stability
