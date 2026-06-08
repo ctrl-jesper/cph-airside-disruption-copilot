@@ -313,6 +313,17 @@
   .rl-tot .val { font-family: 'CPH Airfield', 'Open Sans', sans-serif; font-size: 27px; color: var(--midnight); line-height: 1.1; font-variant-numeric: tabular-nums; }
   .vcases-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   @media (max-width: 1080px) { .vcases-4 { grid-template-columns: repeat(2, 1fr); } }
+  .rl-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .rl-legend .lg { font-size: 11.5px; color: #1b2350; display: inline-flex; align-items: center; gap: 6px; }
+  .rl-legend .lg i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .rl-runs { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); margin: 16px 0; }
+  .rl-runs-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .rl-runs-bar h4 { margin: 0; font-size: 13px; color: var(--midnight); }
+  .rl-cmp { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .rl-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .rl-dot.off { background: #d6deec; }
+  .lk-btn { background: #f6f8fd; border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: var(--midnight); }
+  .lk-btn.del { color: #a11; }
   .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .evt:last-child { border-bottom: none; }
   .evt.future { opacity: 0.38; }
@@ -2075,13 +2086,20 @@ function renderValueView() {
 // Phase V4.6: the realized-cost sub-view of the Value tab (the 48-hour incurred ledger).
 function renderRealizedHTML() {
   const events = v4LedgerEvents(), curve = v4LedgerCurve(events), now = v4.now, realized = v4RealizedCost(now);
+  const sel = v4runs.filter(r => v4compareSel.has(r.id));
   const W = 900, H = 320, pl = 70, pb = 40, pt = 16, pr = 20;
-  const xs = curve.xs, ymax = Math.max(1, curve.total);
+  const xs = curve.xs, ymax = Math.max(1, curve.total, ...sel.map(r => r.total || 0));
   const sx = t => pl + (t / SIM_HORIZON) * (W - pl - pr);
   const sy = v => (H - pb) - v / ymax * (H - pb - pt);
   let svg = '';
   for (let gy = 0; gy <= 4; gy++) { const v = ymax * gy / 4, y = sy(v); svg += '<line x1="' + pl + '" y1="' + y.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + y.toFixed(1) + '" stroke="#eef2fa"/><text x="' + (pl - 8) + '" y="' + (y + 3).toFixed(1) + '" font-size="10" fill="#6b7299" text-anchor="end">' + eur(v) + '</text>'; }
   for (let d = 0; d <= 48; d += 6) { const xx = sx(d * 60); svg += '<text x="' + xx.toFixed(1) + '" y="' + (H - pb + 16) + '" font-size="9.5" fill="#6b7299" text-anchor="middle">' + (d < 24 ? 'D1 ' + pad(d) : 'D2 ' + pad(d - 24)) + '</text>'; }
+  // overlay: each selected saved run as a solid line in its palette colour
+  sel.forEach((r, i) => {
+    const col = V4_RUN_COLORS[i % V4_RUN_COLORS.length];
+    const pts = r.trace.xs.map((t, k) => sx(t).toFixed(1) + ',' + sy(r.trace.cum[k]).toFixed(1)).join(' ');
+    svg += '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="2" opacity="0.85"/>';
+  });
   const ptsAll = xs.map((t, k) => sx(t).toFixed(1) + ',' + sy(curve.cum[k]).toFixed(1));
   const nowIdx = xs.findIndex(t => t > now), cut = nowIdx < 0 ? xs.length : nowIdx;
   const dashed = ptsAll.slice(Math.max(0, cut - 1)).join(' '), solid = ptsAll.slice(0, cut).join(' ');
@@ -2093,12 +2111,28 @@ function renderRealizedHTML() {
   svg += '<text x="16" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 16 ' + (H / 2) + ')">Cumulative incurred cost (€)</text>';
   const kinds = ['delay', 'bus', 'strand', 'gate'];
   const breakdown = kinds.map(k => '<div class="vcase"><div><div class="vc-l">' + V4_KIND[k] + '</div><div class="vc-n">' + eur(realized.byKind[k]) + '</div></div></div>').join('');
+  const legend = sel.length
+    ? '<div class="rl-legend"><span class="lg"><i style="background:#170d81"></i>Current run</span>' +
+      sel.map((r, i) => '<span class="lg"><i style="background:' + V4_RUN_COLORS[i % V4_RUN_COLORS.length] + '"></i>' + r.label + ' · ' + eur(r.total) + '</span>').join('') + '</div>'
+    : '';
+  const runRows = v4runs.slice().reverse().map(r => {
+    const i = sel.indexOf(r);
+    const dot = i >= 0 ? '<i class="rl-dot" style="background:' + V4_RUN_COLORS[i % V4_RUN_COLORS.length] + '"></i>' : '<i class="rl-dot off"></i>';
+    return '<tr><td><label class="rl-cmp">' + dot + '<input type="checkbox" ' + (v4compareSel.has(r.id) ? 'checked' : '') + ' onchange="v4ToggleCompare(\'' + r.id + '\')"></label></td>' +
+      '<td><b>' + r.label + '</b></td><td>' + r.summary + '</td><td>' + eur(r.total) + '</td>' +
+      '<td><button class="lk-btn" onclick="v4LoadRun(\'' + r.id + '\')">Load</button> <button class="lk-btn del" onclick="v4DeleteRun(\'' + r.id + '\')">Delete</button></td></tr>';
+  }).join('');
+  const runsPanel = '<div class="rl-runs"><div class="rl-runs-bar"><h4>Saved runs <span class="band">save the current run, then compare two settings under the same disruptions</span></h4>' +
+    '<span><button class="btn-primary" onclick="v4SaveRun()">Save current run</button>' + (v4runs.length ? ' <button class="btn-ghost" onclick="v4ClearRuns()">Clear all</button>' : '') + '</span></div>' +
+    (v4runs.length
+      ? '<table class="mini"><tr><th>Compare</th><th>Run</th><th>Settings</th><th>Total</th><th></th></tr>' + runRows + '</table>'
+      : '<p class="hint">No saved runs. Set up a scenario (disruptions, optimization on or off, a strategy), play the feed to the end, then Save. Save a second run with the opposite optimization setting and tick both to overlay them here.</p>') + '</div>';
   return '<div class="rl-head"><div class="rl-tot"><div class="lbl">Incurred to ' + v4fmt(now) + '</div><div class="val">' + eur(realized.total) + '</div></div>' +
     '<div class="rl-tot"><div class="lbl">Current-plan full run <small>' + (v4sim.optimize ? 'optimization on' : 'optimization off') + '</small></div><div class="val">' + eur(curve.total) + '</div></div></div>' +
     '<div class="gantt-box"><h4>Realized cost over the 48-hour run <span class="band">solid = incurred to the clock; dashed = forecast of the current plan; amber = now</span></h4>' +
-    '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:340px">' + svg + '</svg></div>' +
-    '<div class="vcases vcases-4">' + breakdown + '</div>' +
-    '<p class="cap">Incurred only, never forecast: the left figure sums the cost of events at or before the clock. Drivers (assumptions in Config): €' + VALUE.eurDelayMin + '/delay-minute, €' + CONFIG.unit.busTrip + '/remote bus trip, €' + CONFIG.unit.connection + '/connection + €' + VALUE.eurReaccom + '/passenger on a strand, €' + VALUE.eurReaccom + '/passenger on a gate change. With optimization off the realized stand is the planned stand, so a flight on a failed stand strands; with it on the optimizer relocates it, and the gap between the two full-run totals is the realized value of optimizing. Play the feed to accrue cost.</p>';
+    '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:340px">' + svg + '</svg>' + legend + '</div>' +
+    '<div class="vcases vcases-4">' + breakdown + '</div>' + runsPanel +
+    '<p class="cap">Incurred only, never forecast: the left figure sums the cost of events at or before the clock. Drivers (assumptions in Config): €' + VALUE.eurDelayMin + '/delay-minute, €' + CONFIG.unit.busTrip + '/remote bus trip, €' + CONFIG.unit.connection + '/connection + €' + VALUE.eurReaccom + '/passenger on a strand, €' + VALUE.eurReaccom + '/passenger on a gate change. A saved run stores its settings and disruption set; Load re-arms them so replaying reproduces the total.</p>';
 }
 
 /* ----------------------- Pareto trade-off front -----------------------
@@ -3378,6 +3412,40 @@ function v4RealizedCost(t) {
 }
 const V4_KIND = { delay: 'Delay minutes', bus: 'Remote bus trips', strand: 'Strands / escalations', gate: 'Gate-change reaccommodation' };
 
+/* ===== Phase V4.7: run save and compare =====
+   A run record captures the settings, the injected disruption set, and the realized cost
+   trace and total, persisted to localStorage. Saved runs overlay on the realized chart so
+   two settings (typically optimization off vs on under the same disruptions) can be compared.
+   Loading a run restores its settings and re-arms its disruption set, so replaying it
+   reproduces the total (FR-R4). */
+const V4_RUNS_KEY = 'cph_v4_runs';
+const V4_RUN_COLORS = ['#e8590c', '#2b8a3e', '#9c36b5', '#1098ad', '#c2255c'];
+let v4runs = [], v4compareSel = new Set(), v4runSeq = 0;
+function v4RunsLoad() { try { const s = localStorage.getItem(V4_RUNS_KEY); v4runs = s ? JSON.parse(s) : []; } catch (e) { v4runs = []; } v4runSeq = v4runs.reduce((m, r) => Math.max(m, r.seq || 0), 0); }
+function v4RunsPersist() { try { localStorage.setItem(V4_RUNS_KEY, JSON.stringify(v4runs)); } catch (e) { /* private mode: in-memory only */ } }
+function v4RunSettings() { return { optimize: v4sim.optimize, strategy: v4sim.strategy, cadenceLock: v4sim.cadenceLock, allowTow: CONFIG.allowTow, optCadence: CONFIG.optCadence, windowMin: CONFIG.windowMin, commitLead: CONFIG.commitLead }; }
+function v4SettingsSummary(s) { return (s.optimize ? 'opt on' : 'opt off') + ' · ' + (V4_STRATEGIES[s.strategy] ? V4_STRATEGIES[s.strategy].label.toLowerCase() : s.strategy) + (s.cadenceLock ? ' · lock ' + s.cadenceLock + 'm' : '') + ' · ' + v4sim.disruptions.length + ' disr'; }
+function v4SaveRun() {
+  const curve = v4LedgerCurve(v4LedgerEvents()), s = v4RunSettings(), seq = ++v4runSeq;
+  const run = { id: 'R' + seq, seq, label: 'Run ' + seq, settings: s, summary: v4SettingsSummary(s),
+    disruptionSet: v4sim.disruptions.map(d => ({ type: d.type, time: d.time, target: d.target, params: { ...d.params }, duration: d.duration })),
+    total: curve.total, trace: { xs: curve.xs, cum: curve.cum } };
+  v4runs.push(run); v4RunsPersist(); v4compareSel.add(run.id); renderValueView();
+}
+function v4DeleteRun(id) { v4runs = v4runs.filter(r => r.id !== id); v4compareSel.delete(id); v4RunsPersist(); renderValueView(); }
+function v4ClearRuns() { v4runs = []; v4compareSel.clear(); v4RunsPersist(); renderValueView(); }
+function v4ToggleCompare(id) { if (v4compareSel.has(id)) v4compareSel.delete(id); else v4compareSel.add(id); renderValueView(); }
+function v4LoadRun(id) {
+  const run = v4runs.find(r => r.id === id); if (!run) return;
+  const s = run.settings;
+  CONFIG.allowTow = s.allowTow; CONFIG.optCadence = s.optCadence; CONFIG.windowMin = s.windowMin; CONFIG.commitLead = s.commitLead;
+  v4sim.cadenceLock = s.cadenceLock; v4sim.strategy = s.strategy; v4sim.optimize = s.optimize;
+  v4sim.weights = s.strategy === 'adaptive' ? { passenger: 1, handler: 1, schedule: 1 } : { ...V4_STRATEGIES[s.strategy].w };
+  v4sim.disruptions = run.disruptionSet.map(d => ({ id: 'D' + (++V4_DID), type: d.type, time: d.time, target: d.target, params: { ...d.params }, duration: d.duration, applied: false, cleared: false, desc: '' }));
+  v4Reset();          // regenerate FEED, re-arm the set, restore preset weights
+  showTab('feed');    // play it to reproduce the total
+}
+
 const PANE_TITLES = {
   apron: ['Apron picture', 'Live snapshot of every stand and the rolling traffic window'],
   feed: ['48-hour feed', 'The schedule plays forward; the live picture is derived from the clock'],
@@ -3402,6 +3470,7 @@ function showTab(name) {
   if (name === 'value') renderValueView();
 }
 
+v4RunsLoad();
 render();
 renderConfig();
 </script>
