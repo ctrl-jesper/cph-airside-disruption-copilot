@@ -1225,37 +1225,51 @@ function buildSummary() {
   return parts.join(' ');
 }
 
+// U3: the live operations sidebar, derived from the feed picture at v4.now (no longer V3 state).
 function renderFeed() {
-  const needs = needsDecisionFlights().length;
-  const committedN = Object.keys(state.committed).length;
+  const t = v4.now, needs = needsDecision(t).length, onstand = onStandAt(t);
   document.getElementById('reallocCount').textContent = needs;
-  document.getElementById('flightTabN').textContent = FLIGHTS.length;
+  document.getElementById('flightTabN').textContent = feedFlightsAround(t, 60, CONFIG.windowMin).length;
   document.getElementById('optTabN').textContent = needs;
-  document.getElementById('changesTabN').textContent = committedN;
+  document.getElementById('changesTabN').textContent = v4sim.moves.length;
 
-  document.getElementById('summaryBox').innerHTML = '<p class="issue-head">Summary</p><p>' + buildSummary() + '</p>';
+  document.getElementById('summaryBox').innerHTML = '<p class="issue-head">Live picture</p><p>' + feedSummary(t) + '</p>';
 
   const zoneName = z => z === 'S' ? 'Schengen' : z === 'N' ? 'non-Schengen' : 'mixed';
-  const oos = STANDS.filter(isStandOOS);
-  document.getElementById('oosList').innerHTML = oos.map(s =>
-    '<div class="oos-item"><span class="oos-id">' + s.id + '</span><span class="oos-meta">' +
-    standOOSReason(s) + ' · code-' + s.code + ' · ' + zoneName(s.zone) + '</span></div>').join('');
+  const oos = STANDS.filter(s => standOfflineNow(s.id, t));
+  document.getElementById('oosList').innerHTML = oos.length
+    ? oos.map(s => '<div class="oos-item"><span class="oos-id">' + s.id + '</span><span class="oos-meta">' +
+        feedOosReason(s.id, t) + ' · code-' + s.code + ' · ' + zoneName(s.zone) + '</span></div>').join('')
+    : '<p class="cap" style="margin:2px 0 0">All 18 stands in service.</p>';
 
-  const free = STANDS.filter(s => !isStandOOS(s) && !occupantOf(s.id)).length;
-  const usable = STANDS.filter(s => !isStandOOS(s)).length;
+  const free = freeStandsAt(t).length, usable = STANDS.filter(s => !standOfflineNow(s.id, t)).length;
   document.getElementById('standGauge').innerHTML = gaugeHtml('Free now', free, usable, free / usable);
 
   document.getElementById('handlerGauges').innerHTML = HANDLERS.map(h => {
-    const load = handlerLoad(h.id);
-    const cap = handlerCapacity(h.id);
+    const load = onstand.filter(f => f.handler === h.id).length;
+    const cap = v4sim.handlerCap[h.id] != null ? v4sim.handlerCap[h.id] : h.capacity;
     return gaugeHtml(h.id, load, cap, load / cap);
   }).join('');
 
   document.getElementById('beltGauges').innerHTML = BELTS.map(b => {
-    const bags = beltLoad(b);
+    const bags = onstand.filter(f => { const s = STANDS.find(x => x.id === v4StandOf(f)); return s && s.belt === b; }).reduce((a, f) => a + (f.bags || 0), 0);
     const cap = b === 'Remote belt' ? 700 : 500;
     return gaugeHtml(b, bags, cap, bags / cap, true);
   }).join('');
+  v4._sideMin = Math.floor(t);
+}
+function feedSummary(t) {
+  const onstand = onStandAt(t).length;
+  const inbound = FEED.filter(f => f.dir === 'arr' && f.predOn >= t && f.predOn < t + 60).length;
+  const needs = needsDecision(t).length;
+  const active = v4sim.disruptions.filter(d => d.applied && !d.cleared);
+  const parts = [onstand + ' aircraft on stand, ' + inbound + ' inbound in the next hour, ' + needs + ' arrival' + (needs === 1 ? '' : 's') + ' awaiting a stand within the ' + (CONFIG.windowMin / 60).toFixed(CONFIG.windowMin % 60 ? 1 : 0) + ' h planning window.'];
+  parts.push(active.length ? active.map(d => V4_DISRUPT[d.type].label + ' on ' + d.target).join('; ') + ' active.' : 'No disruptions active.');
+  return parts.join(' ');
+}
+function feedOosReason(sid, t) {
+  const d = v4sim.disruptions.find(x => x.type === 'standOffline' && x.target === sid && x.time <= t && t < x.time + x.duration);
+  return d ? 'offline until ' + v4fmt(d.time + d.duration) : 'out of service';
 }
 
 function gaugeHtml(label, val, max, ratio, isBags) {
@@ -3001,6 +3015,7 @@ function v4Reset() {
 }
 
 function v4Render() {
+  v4._sideMin = -1;                                  // force the live sidebar to refresh (inject/clear/toggle changed the picture)
   const el = document.getElementById('feedUI'); if (!el) return;
   const ganttSub = v4sim.optimize ? 'live optimized allocation' : 'static planned allocation';
   el.innerHTML =
@@ -3052,6 +3067,7 @@ function v4Gantt() {
 
 function v4Frame() {
   const hc = document.getElementById('clockText'); if (hc) hc.textContent = v4fmt(v4.now);   // header clock follows the single feed clock
+  if (Math.floor(v4.now) !== v4._sideMin) renderFeed();                                       // live sidebar tracks the feed clock (once per sim-minute)
   const cl = document.querySelector('#feedControls .feed-clock'); if (cl) cl.textContent = v4fmt(v4.now);
   const sc = document.querySelector('#feedControls .feed-scrub'); if (sc && document.activeElement !== sc) sc.value = Math.round(v4.now);
   const lockNow = v4StrategyLockRemaining();                      // refresh the strategy lock countdown only when it changes
