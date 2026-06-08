@@ -330,6 +330,9 @@
   .rot-leg { font-size: 11.5px; background: #eef2fa; color: var(--muted); border-radius: 6px; padding: 3px 8px; font-variant-numeric: tabular-nums; }
   .rot-leg.late { background: #fde7e7; color: #a11; font-weight: 600; }
   .rot-arr { color: var(--muted); font-size: 12px; }
+  .opt-apply { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+  .opt-apply .hint { font-size: 11.5px; color: var(--muted); }
+  .opt-applied { background: #e6f3ea; border: 1px solid #b6dcc2; color: #1d6b3a; border-radius: 10px; padding: 10px 14px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
   .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .evt:last-child { border-bottom: none; }
   .evt.future { opacity: 0.38; }
@@ -523,7 +526,7 @@
     </section>
 
     <section class="tabpane" id="pane-optimize">
-      <p class="opt-intro">The optimizer solves the apron one rolling window at a time as a binary assignment problem, with <code>glpk.js</code> (GLPK compiled to WebAssembly) running locally in the browser. Each <code>x[flight,stand]</code> is a 0/1 decision. <b>Hard constraints</b> are size code, stand availability, and no two aircraft overlapping in time on one stand. <b>Soft costs</b>, weighted by the current strategy, are passenger walking distance and connections, ground-handler balance, and schedule stability with remote-stand and zone penalties. This is one solve of the window at the feed clock and is a preview only; the 48h feed runs exactly this continuously on a cadence.</p>
+      <p class="opt-intro">The optimizer solves the apron one rolling window at a time as a binary assignment problem, with <code>glpk.js</code> (GLPK compiled to WebAssembly) running locally in the browser. Each <code>x[flight,stand]</code> is a 0/1 decision. <b>Hard constraints</b> are size code, stand availability, and no two aircraft overlapping in time on one stand. <b>Soft costs</b>, weighted by the current strategy, are passenger walking distance and connections, ground-handler balance, and schedule stability with remote-stand and zone penalties. This is one solve of the window at the feed clock: review the proposal and <b>apply it to the live plan</b>, or let the 48h feed run exactly this continuously on a cadence. Advisory here, autonomous there.</p>
 
       <button class="btn-primary" id="optBtn" onclick="v4OptimizeNow()">Optimize the current window</button>
       <span class="hint" id="optClock" style="margin-left:10px"></span>
@@ -2662,15 +2665,17 @@ function v4Frame() {
    unserviceable. Every move is logged with a reason. The whole run is deterministic in
    sim-time, so playback speed does not change the trace. */
 const V4_STAB = { inbound: 6, parked: 25, boarding: 60 };  // tiered cost of moving an aircraft off its current stand
-const v4sim = { optimize: false, assign: {}, moves: [], lastSolveAt: -1, solving: false, solves: 0, oos: new Set(), cost: 0, disruptions: [], handlerCap: {},
+const v4sim = { optimize: false, applied: false, assign: {}, moves: [], lastSolveAt: -1, solving: false, solves: 0, oos: new Set(), cost: 0, disruptions: [], handlerCap: {},
   strategy: 'balanced', weights: { passenger: 1, handler: 1, schedule: 1 }, cadenceLock: 0, lastStrategyChange: -Infinity };
 
 function v4InitPlan() {
   v4sim.assign = {};
   FEED.filter(f => f.dir === 'arr' && f.plannedStand).forEach(f => v4sim.assign[f.id] = f.plannedStand);
-  v4sim.moves = []; v4sim.lastSolveAt = -1; v4sim.solves = 0; v4sim.cost = v4PlanCost();
+  v4sim.moves = []; v4sim.lastSolveAt = -1; v4sim.solves = 0; v4sim.applied = false; v4sim.cost = v4PlanCost();
 }
-function v4StandOf(f) { return v4sim.optimize ? (v4sim.assign[f.id] || f.plannedStand) : f.plannedStand; }
+// The live plan reads the allocation when continuous optimization is on, OR when the operator
+// has manually applied an optimized window (advisory mode); otherwise it is the naive planned plan.
+function v4StandOf(f) { return (v4sim.optimize || v4sim.applied) ? (v4sim.assign[f.id] || f.plannedStand) : f.plannedStand; }
 function v4StandOk(f, s) {
   // V4 baseline treats all 18 stands as available; the static V3 B16 fault does not leak in.
   // Faults are injected into v4sim.oos by the disruption layer (V4.4).
@@ -2822,10 +2827,13 @@ async function v4SolveWindow(t, w) {
 /* ===== U6: Optimize and Trade-offs explainers, on the live feed window =====
    Both run the non-mutating windowed solve at v4.now; they preview the MIP and the trade-off
    without committing to the run (the 48h feed's continuous optimizer is what commits). */
+let v4optPreview = null;   // last Optimize-tab preview, so the operator can apply it
 async function v4OptimizeNow() {
   const btn = document.getElementById('optBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Solving…'; }
   try {
     const t = v4.now, r = await v4SolveWindow(t, v4sim.weights || CONFIG.weights), m = r.meta;
+    const reassigns = r.decision.filter(f => r.alloc[f.id] !== v4StandOf(f) && r.alloc[f.id] !== 'ESC').length;
+    v4optPreview = { t, alloc: r.alloc, decision: r.decision, reassigns };
     const cl = document.getElementById('optClock'); if (cl) cl.textContent = 'at the feed clock ' + v4fmt(t) + ' · strategy ' + (V4_STRATEGIES[v4sim.strategy] ? V4_STRATEGIES[v4sim.strategy].label : v4sim.strategy);
     document.getElementById('solveMeta').innerHTML =
       '<span class="chip ok">Status <b>' + m.status + '</b></span>' +
@@ -2834,16 +2842,38 @@ async function v4OptimizeNow() {
       '<span class="chip">Constraints <b>' + m.constraints + '</b></span>' +
       '<span class="chip">Solve <b>' + m.ms + ' ms</b></span>';
     const rows = r.decision.slice().sort((a, b) => a.predOn - b.predOn).map(f => {
-      const sid = r.alloc[f.id], cur = f.plannedStand, moved = sid !== cur;
+      const sid = r.alloc[f.id], cur = v4StandOf(f), moved = sid !== cur;
       const proposed = sid === 'ESC' ? '<span class="pill neg">escalate</span>' : sid;
       const verdict = sid === 'ESC' ? '' : moved ? '<span class="pill pos">reassign</span>' : '<span class="band">hold</span>';
       return '<tr><td><b>' + f.id + '</b> <span class="band">' + f.ac + '/' + f.code + '</span></td><td>' + fmt(f.predOn) + '</td><td>' + (cur || '—') + '</td><td>' + proposed + '</td><td>' + verdict + '</td></tr>';
     }).join('');
+    const applyBar = r.decision.length
+      ? '<div class="opt-apply"><button class="btn-primary"' + (reassigns ? '' : ' disabled') + ' onclick="v4ApplyOptimize()">Apply to the live plan &rarr;</button>' +
+        '<span class="hint">' + (reassigns ? 'Commits ' + reassigns + ' reassignment' + (reassigns === 1 ? '' : 's') + ' to the live plan and logs them in the Event log. The system proposes; you accept.' : 'No reassignments to apply; the optimizer holds the planned allocation.') + '</span></div>'
+      : '';
     document.getElementById('optResult').innerHTML = r.decision.length
-      ? '<div class="opt-moves"><h4>Proposed allocation for the window <span class="band">' + (CONFIG.windowMin / 60).toFixed(CONFIG.windowMin % 60 ? 1 : 0) + ' h horizon · preview only</span></h4>' +
-        '<table class="mini"><tr><th>Flight</th><th>On-block</th><th>Planned</th><th>Proposed</th><th></th></tr>' + rows + '</table></div>'
+      ? applyBar + '<div class="opt-moves"><h4>Proposed allocation for the window <span class="band">' + (CONFIG.windowMin / 60).toFixed(CONFIG.windowMin % 60 ? 1 : 0) + ' h horizon · review then apply</span></h4>' +
+        '<table class="mini"><tr><th>Flight</th><th>On-block</th><th>Current</th><th>Proposed</th><th></th></tr>' + rows + '</table></div>'
       : '<p class="cap">No flights to decide in the window at this feed time. Scrub to a busier period.</p>';
   } finally { if (btn) { btn.disabled = false; btn.textContent = 'Optimize the current window'; } }
+}
+// Operator approval: commit the previewed allocation to the live plan and log each move.
+async function v4ApplyOptimize() {
+  if (!v4optPreview) return;
+  const { t, alloc, decision } = v4optPreview;
+  let applied = 0;
+  decision.forEach(f => {
+    const chosen = alloc[f.id], from = v4sim.assign[f.id];
+    if (chosen && chosen !== from) {
+      v4sim.moves.push({ t, id: f.id, from: from || '—', to: chosen === 'ESC' ? 'escalated' : chosen, reason: 'operator approved', phase: v4ArrPhase(f, t) });
+      v4sim.assign[f.id] = chosen; applied++;
+    }
+  });
+  v4sim.applied = true; v4sim.cost = v4PlanCost();
+  render();                                   // live sidebar / apron / flights / event log reflect the approved plan
+  await v4OptimizeNow();                       // re-solve so the table now reads "hold" for the committed flights
+  const res = document.getElementById('optResult');
+  if (res) res.insertAdjacentHTML('afterbegin', '<div class="opt-applied">Applied ' + applied + ' reassignment' + (applied === 1 ? '' : 's') + ' to the live plan at ' + v4fmt(t) + '. The apron, flights, event log, and realized cost now reflect it.</div>');
 }
 
 const V4_TRADE = [
