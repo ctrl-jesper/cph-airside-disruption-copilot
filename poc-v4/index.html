@@ -1328,33 +1328,40 @@ function standCardHtml(id, t) {
     '</span><span>walk ' + s.walk + 'm</span></div>' + occHtml + '</div>';
 }
 
+// U5: the flights table, the FEED windowed around v4.now (no longer the static V3 afternoon).
 function renderFlights() {
-  const rows = FLIGHTS.slice().sort((a, b) => a.predOn - b.predOn).map(f => {
-    const st = flightStatus(f);
-    const route = f.dir === 'arr' ? (f.from + ' &rarr; CPH') : ('CPH &rarr; ' + f.to);
-    const delay = f.predOn - f.schedOn;
-    const timeCell = (delay !== 0 ? '<span class="t-old">' + fmt(f.schedOn) + '</span>' : '') +
+  const t = v4.now;
+  const win = feedFlightsAround(t, 60, CONFIG.windowMin).sort((a, b) => (a.predOn - b.predOn) || (a.dir === 'arr' ? -1 : 1));
+  const rows = win.map(f => {
+    const st = feedFlightStatus(f, t);
+    const route = f.dir === 'arr' ? (f.from + ' &rarr; CPH') : ('CPH &rarr; ' + (f.to || ''));
+    const delay = f.delayMin || 0, sched = f.schedOn != null ? f.schedOn : f.predOn - delay;
+    const timeCell = (delay > 0 ? '<span class="t-old">' + fmt(sched) + '</span>' : '') +
       '<span class="t-new">' + fmt(f.predOn) + '</span>' +
       (f.predBand ? ' <span class="band">&plusmn;' + f.predBand + 'm</span>' : '');
     const zoneTxt = f.zone === 'S' ? 'Schengen' : f.zone === 'N' ? 'Non-Schengen' : 'Mixed';
-    let act = '';
-    if (f.dir === 'dep' && !state.escalations[f.id]) {
-      act = f.watch
-        ? '<button class="row-act" onclick="openEscalate(\'' + f.id + '\')">Escalate</button>'
-        : '<button class="row-act ghost" onclick="acknowledgeDep(\'' + f.id + '\')">Acknowledge</button>';
-    }
-    return '<tr class="' + (f.needsRealloc ? 'realloc' : '') + '">' +
-      '<td><b>' + disName(f) + '</b><br><span class="band">' + f.carrier + '</span></td>' +
+    const moved = f.dir === 'arr' && f.plannedStand && v4StandOf(f) !== f.plannedStand;
+    return '<tr class="' + (moved ? 'realloc' : '') + '">' +
+      '<td><b>' + f.id + '</b><br><span class="band">' + f.carrier + '</span></td>' +
       '<td>' + route + '</td>' +
       '<td>' + f.ac + ' &middot; ' + f.code + '</td>' +
       '<td>' + zoneTxt + '</td>' +
       '<td>' + timeCell + '</td>' +
       '<td>' + f.handler + '</td>' +
-      '<td>' + f.pax + ' / ' + f.bags + '</td>' +
-      '<td><span class="pill ' + st.cls + '">' + st.txt + '</span>' + act + '</td>' +
+      '<td>' + (f.pax || 0) + ' / ' + (f.bags || 0) + '</td>' +
+      '<td><span class="pill ' + st.cls + '">' + st.txt + '</span></td>' +
       '</tr>';
   }).join('');
-  document.getElementById('flightRows').innerHTML = rows;
+  document.getElementById('flightRows').innerHTML = rows || '<tr><td colspan="8" class="cap">No flights in the window at this feed time.</td></tr>';
+}
+function feedFlightStatus(f, t) {
+  if (f.dir === 'arr') {
+    const on = f.predOn, off = on + (f.dwell || 45), sid = v4StandOf(f);
+    if (t < on) return { txt: 'Inbound &middot; ETA ' + fmt(on), cls: '' };
+    if (t < off) return { txt: 'On stand ' + (sid || '—') + ' &middot; clears ' + fmt(off), cls: 'pos' };
+    return { txt: 'Departed', cls: 'muted' };
+  }
+  return t < f.predOn ? { txt: 'Departs &middot; ' + fmt(f.predOn), cls: '' } : { txt: 'Departed', cls: 'muted' };
 }
 
 function setLogFilter(fid) { state.logFilter = fid; renderChanges(); }
@@ -3534,6 +3541,7 @@ function showTab(name) {
   else if (v4.playing) { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; }
   if (name === 'value') renderValueView();
   if (name === 'apron') renderApron();          // repointed V3 tabs render at the current feed clock on open
+  if (name === 'flights') renderFlights();
 }
 
 v4RunsLoad();
