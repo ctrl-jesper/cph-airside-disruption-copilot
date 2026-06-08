@@ -1,5 +1,5 @@
 flight,airline,aircraft,wingspan_code,origin,zone,movement,sched_on_block,est_on_block,assigned_stand,status,pax,connecting_pax,ground_handler,note
-SK456,SAS,A320,C,OSL,Schengen,arrival,14:05,14:05,B14,displaced_by_outage,168,47,CPH Ground,stand B14 out of service
-LH882,Lufthansa,A320neo,C,FRA,Schengen,arrival,14:55,15:10,B16,delayed_off_slot,174,60,Aviator,
-EK151,Emirates,B777,E,DXB,non-Schengen,arrival,14:20,14:35,C28,off_slot,354,120,CPH Ground,wide-body code E
+SK456,SAS,A320,C,OSL,Schengen,arrival,14:05,14:05,B16,displaced_by_outage,168,47,CPH Ground,stand B16 out of service
+LH882,Lufthansa,A320neo,C,FRA,Schengen,arrival,14:55,15:10,B14,delayed_off_slot,174,60,Aviator,
+EK151,Emirates,A388,F,DXB,non-Schengen,arrival,14:20,14:35,R8,off_slot,489,96,CPH Ground,A380 needs the single code-F remote stand
 SK1429,SAS,A321,C,LHR,non-Schengen,arrival,14:30,14:30,C30,stand_occupied_conflict,198,70,CPH Ground,C30 occupied until 14:40

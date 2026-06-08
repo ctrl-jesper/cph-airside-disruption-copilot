@@ -251,7 +251,7 @@ const TIPS = {
 function tip(label, key) { return '<span class="tip" data-tip="' + TIPS[key] + '">' + label + '</span>'; }
 
 const baseStands = [
-  { id: "B16", pier: "B", zone: "Schengen", type: "contact", maxCode: "C", jetbridge: "ok", status: "free", availFrom: 14*60+20, nextArrival: 15*60+30, walk: 4, belt: 5, handler: "Menzies", handlerCap: "ok" },
+  { id: "B14", pier: "B", zone: "Schengen", type: "contact", maxCode: "C", jetbridge: "ok", status: "free", availFrom: 14*60+20, nextArrival: 15*60+30, walk: 4, belt: 5, handler: "Menzies", handlerCap: "ok" },
   { id: "A12", pier: "A", zone: "Schengen", type: "contact", maxCode: "D", jetbridge: "ok", status: "free", availFrom: 14*60+20, nextArrival: 16*60+30, walk: 9, belt: 3, handler: "Menzies", handlerCap: "ok" },
   { id: "R6",  pier: "Remote", zone: "mixed", type: "remote", maxCode: "E", jetbridge: "none", status: "free", availFrom: 14*60+20, nextArrival: 18*60+0, walk: 12, belt: 9, handler: "Aviator", handlerCap: "at_capacity" },
   { id: "R8",  pier: "Remote", zone: "mixed", type: "remote", maxCode: "F", jetbridge: "none", status: "free", availFrom: 14*60+20, nextArrival: 18*60+30, walk: 12, belt: 9, handler: "Aviator", handlerCap: "at_capacity" },
@@ -264,7 +264,7 @@ const baseStands = [
 ];
 
 const arrivals = [
-  { flight: "SK1425", airline: "SAS", type: "A320", code: "C", zone: "Schengen", origin: "OSL", sched: 14*60+10, est: 14*60+25, onBlock: 14*60+25, groundMin: 45, slot: "on", plannedStand: "B14", origWalk: 4, origBelt: 5, origPier: "B", needsDecision: true, issue: "Stand B14 out of service" },
+  { flight: "SK456", airline: "SAS", type: "A320", code: "C", zone: "Schengen", origin: "OSL", sched: 14*60+10, est: 14*60+25, onBlock: 14*60+25, groundMin: 45, slot: "on", plannedStand: "B16", origWalk: 4, origBelt: 5, origPier: "B", needsDecision: true, issue: "Stand B16 out of service" },
   { flight: "EK151", airline: "Emirates", type: "A388", code: "F", zone: "non-Schengen", origin: "DXB", sched: 13*60+15, est: 14*60+55, onBlock: 14*60+55, groundMin: 90, slot: "off", plannedStand: null, origWalk: null, origBelt: null, origPier: null, needsDecision: true, issue: "Off-slot, no code-F stand free" },
   { flight: "LH2438", airline: "Lufthansa", type: "A319", code: "C", zone: "Schengen", origin: "FRA", sched: 14*60+5, est: 14*60+40, onBlock: 14*60+40, groundMin: 40, slot: "off", plannedStand: "B20", origWalk: 5, origBelt: 6, origPier: "B", needsDecision: true, issue: "Off-slot, planned stand unavailable" },
   { flight: "SK1402", airline: "SAS", type: "A320", code: "C", zone: "Schengen", origin: "ARN", sched: 14*60+0, est: 14*60+30, onBlock: 14*60+30, groundMin: 45, slot: "off", plannedStand: "A30", origWalk: 8, origBelt: 2, origPier: "A", needsDecision: false, issue: "" },
@@ -307,9 +307,9 @@ function committedStands() {
 function activeStands() {
   const stands = baseStands.map(s => Object.assign({}, s));
   if (severityHard) {
-    const b16 = stands.find(s => s.id === "B16");
+    const b14 = stands.find(s => s.id === "B14");
     const a12 = stands.find(s => s.id === "A12");
-    b16.jetbridge = "fault";
+    b14.jetbridge = "fault";
     a12.status = "occupied"; a12.availFrom = 15*60+40;
   }
   return stands;
@@ -611,7 +611,7 @@ function renderChanges() {
 }
 function renderIssues() {
   let issues = [
-    { dot: "red", b: "B14 out of service", s: "Central contact stand, technical fault" },
+    { dot: "red", b: "B16 out of service", s: "Central contact stand, technical fault" },
     { dot: "red", b: "Aviator at capacity", s: "Ground handler cannot take more turnarounds" },
     { dot: "amber", b: "Off-slot arrivals", s: "Multiple aircraft arriving outside their slots" },
     { dot: "amber", b: "European airspace pressure", s: "Inbound flows delayed" },
@@ -620,7 +620,7 @@ function renderIssues() {
   let injectedHtml = "";
   if (severityHard) {
     injectedHtml = [
-      { b: "B16 jet bridge faulty", s: "Contact use lost (injected)" },
+      { b: "B14 jet bridge faulty", s: "Contact use lost (injected)" },
       { b: "A12 occupied until 15:40", s: "Contact use lost (injected)" }
     ].map(i => '<div class="issue injected"><span class="dot red"></span><div><b>' + i.b + '</b><span>' + i.s + '</span></div></div>').join("");
   }

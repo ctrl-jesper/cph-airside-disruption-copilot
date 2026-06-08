@@ -16,10 +16,10 @@ Airside Operations must decide, in real time, which arriving aircraft go to whic
 
 The agent should also be able to reason about a degraded variant where two more problems appear:
 
-- Stand B16 develops a jet bridge fault, so it can no longer be used as a contact stand.
+- Stand B14 develops a jet bridge fault, so it can no longer be used as a contact stand.
 - Stand A12 becomes occupied until 15:40, so it is not available in time for the early-afternoon arrivals.
 
-In the hardened scenario, any earlier assignment that used B16 or A12 is no longer valid and must be re-decided. The aircraft must re-rank against whatever stands remain, which are mostly remote.
+In the hardened scenario, any earlier assignment that used B14 or A12 is no longer valid and must be re-decided. The aircraft must re-rank against whatever stands remain, which are mostly remote.
 
 ---
 
@@ -61,7 +61,7 @@ Every legal stand starts at 100 points. The engine subtracts penalties:
 
 | Stand | Pier | Zone | Type | Max code | Jet bridge | Status | Free from | Next arrival | Walk (min) | Belt | Handler |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| B16 | B | Schengen | contact | C | ok (faulted in hardened) | free | 14:20 | 15:30 | 4 | 5 | Menzies (ok) |
+| B14 | B | Schengen | contact | C | ok (faulted in hardened) | free | 14:20 | 15:30 | 4 | 5 | Menzies (ok) |
 | A12 | A | Schengen | contact | D | ok | free (occupied to 15:40 in hardened) | 14:20 | 16:30 | 9 | 3 | Menzies (ok) |
 | R6 | Remote | mixed | remote | E | none | free | 14:20 | 18:00 | 12 | 9 | Aviator (at capacity) |
 | R8 | Remote | mixed | remote | F | none | free | 14:20 | 18:30 | 12 | 9 | Aviator (at capacity) |
@@ -80,7 +80,7 @@ R8 is the only stand that can take a code-F aircraft (the A380). R6 is the large
 
 | Flight | Airline | Type | Code | Zone | From | Scheduled | Estimated | On-block | Ground (min) | Off-block | Planned stand | Slot | Needs decision |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| SK1425 | SAS | A320 | C | Schengen | OSL | 14:10 | 14:25 | 14:25 | 45 | 15:10 | B14 | on | yes, B14 is out of service |
+| SK456 | SAS | A320 | C | Schengen | OSL | 14:10 | 14:25 | 14:25 | 45 | 15:10 | B16 | on | yes, B16 is out of service |
 | EK151 | Emirates | A388 | F | non-Schengen | DXB | 13:15 | 14:55 | 14:55 | 90 | 16:25 | none | off | yes, off-slot, no code-F contact stand |
 | LH2438 | Lufthansa | A319 | C | Schengen | FRA | 14:05 | 14:40 | 14:40 | 40 | 15:20 | B20 | off | yes, off-slot, planned stand unavailable |
 | SK1402 | SAS | A320 | C | Schengen | ARN | 14:00 | 14:30 | 14:30 | 45 | 15:15 | A30 | off | no, on plan |
@@ -101,9 +101,9 @@ R8 is the only stand that can take a code-F aircraft (the A380). R6 is the large
 
 ## 7. Computed recommendations: base scenario
 
-### SK1425 (A320, code C, Schengen)
-- Recommendation: re-stand to B16. Confidence High (score 74).
-- Why: B16 is a Schengen contact stand on the aircraft's own B pier, with the shortest walk and no baggage-belt change. The only watch item is the buffer, 20 minutes, just below the 25-minute target.
+### SK456 (A320, code C, Schengen)
+- Recommendation: re-stand to B14. Confidence High (score 74).
+- Why: B14 is a Schengen contact stand on the aircraft's own B pier, with the shortest walk and no baggage-belt change. The only watch item is the buffer, 20 minutes, just below the 25-minute target.
 - Second option: none of the other contact stands are free and legal; the next ranked options are remote.
 - Excluded stands include A12 and others that are larger, occupied, faulted, or out of service.
 
@@ -113,9 +113,9 @@ R8 is the only stand that can take a code-F aircraft (the A380). R6 is the large
 - This is not a redirect candidate. A feasible stand exists; the duty manager should confirm and coordinate the handler.
 
 ### LH2438 (A319, code C, Schengen)
-- Recommendation: re-stand to B16. Confidence Medium (score 66).
-- Note: SK1425 also ranks B16 first. Two flights cannot hold the same stand. If B16 is assigned to SK1425, LH2438 re-ranks to A12 (Medium, score about 59), a code-D Schengen contact stand on A pier with a longer walk and a baggage-belt change.
-- This contention between SK1425 and LH2438 for B16 is the clearest example of interdependency in the base scenario.
+- Recommendation: re-stand to B14. Confidence Medium (score 66).
+- Note: SK456 also ranks B14 first. Two flights cannot hold the same stand. If B14 is assigned to SK456, LH2438 re-ranks to A12 (Medium, score about 59), a code-D Schengen contact stand on A pier with a longer walk and a baggage-belt change.
+- This contention between SK456 and LH2438 for B14 is the clearest example of interdependency in the base scenario.
 
 ### DY1741 (B738, departure to BGO)
 - Recommendation: hold and monitor. The 40-minute delay creates a knock-on risk to the next turnaround on stand B12, but no reallocation is needed yet.
@@ -127,10 +127,10 @@ R8 is the only stand that can take a code-F aircraft (the A380). R6 is the large
 
 ## 8. Computed recommendations: hardened scenario
 
-When B16 faults and A12 is occupied until 15:40, both lose their validity as contact stands for the early arrivals.
+When B14 faults and A12 is occupied until 15:40, both lose their validity as contact stands for the early arrivals.
 
-- SK1425 re-opens. Its contact options are gone. It re-ranks to remote R6 (the right-sized remote for a code-C aircraft), Confidence Low.
-- LH2438 re-opens. It also ranks R6 first, so SK1425 and LH2438 now contend for R6.
+- SK456 re-opens. Its contact options are gone. It re-ranks to remote R6 (the right-sized remote for a code-C aircraft), Confidence Low.
+- LH2438 re-opens. It also ranks R6 first, so SK456 and LH2438 now contend for R6.
 - EK151 still needs R8, the only code-F stand. R8 must be protected for the A380. A narrowbody never ranks R8 above R6, because the oversized-stand penalty makes a code-C aircraft prefer the smaller remote.
 - Once R6 is assigned to one narrowbody and R8 is held for EK151, the other narrowbody has no remaining stand and becomes a redirect candidate, escalated to the airline and ATC.
 
@@ -165,9 +165,9 @@ The cascading, second-order ripple across the whole apron over time is the job o
 
 These pairs help the agent answer common questions consistently.
 
-- Q: Which stand should SK1425 use? A: B16, a High-confidence re-stand. Short walk, same pier, no belt change. Watch the 20-minute buffer.
-- Q: Why not put SK1425 on A12? A: A12 is feasible but worse: it is a pier change to A, a longer walk, a baggage-belt change, and it is one size code larger than needed. It scores lower than B16.
+- Q: Which stand should SK456 use? A: B14, a High-confidence re-stand. Short walk, same pier, no belt change. Watch the 20-minute buffer.
+- Q: Why not put SK456 on A12? A: A12 is feasible but worse: it is a pier change to A, a longer walk, a baggage-belt change, and it is one size code larger than needed. It scores lower than B14.
 - Q: Where does the A380, EK151, go? A: Remote stand R8, the only stand that fits a code-F aircraft. Confidence is Low because it is remote and the handler is at capacity, so confirm with the handler before committing. It is not a redirect candidate.
 - Q: Can the airport just cancel WF402? A: No. The airport does not cancel an airline's flight. WF402 is a cancellation candidate to escalate to the airline and the Network Manager, because the inbound aircraft is not available and the delay is 120 minutes.
-- Q: What happens if B16 also goes out of service? A: SK1425 and LH2438 lose their best contact stand and re-rank to the remote stands. They contend for R6, the A380 keeps R8, and the narrowbody that loses the contention becomes a redirect candidate to escalate.
+- Q: What happens if B14 also goes out of service? A: SK456 and LH2438 lose their best contact stand and re-rank to the remote stands. They contend for R6, the A380 keeps R8, and the narrowbody that loses the contention becomes a redirect candidate to escalate.
 - Q: Is this just a chatbot? A: No. The recommendations are produced by a deterministic constraint-and-scoring engine. This conversational agent surfaces and explains the engine's output in natural language. In the full system the agent calls the solver as an action rather than reading pre-computed results.

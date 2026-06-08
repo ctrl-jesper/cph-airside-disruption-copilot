@@ -40,9 +40,9 @@ Copilot Studio knowledge upload accepts PDF, Word, and similar. It does not take
 
 Add these as suggested prompts (or starter topics) so the demo has one-tap questions. They are also listed in `demo_qa.md`.
 
-- Which stand should SK1425 use, and why?
+- Which stand should SK456 use, and why?
 - Where does the A380, EK0151, go?
-- What happens if B16 also goes out of service?
+- What happens if B14 also goes out of service?
 - Can the airport cancel WF402?
 
 ## Step 5: Test
