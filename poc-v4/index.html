@@ -1029,16 +1029,10 @@ function acceptAllocation(alloc, sourceLabel, towed) {
   render();
   showTab('changes');
 }
-function acceptOptimize() { if (lastSolve) acceptAllocation(allocFromRes(lastSolve.res), 'whole-apron optimum', lastSolve.towed); }
 function acceptSelected() {
   if (!window.__selectedStrategy) return;
   const k = window.__selectedStrategy.key;
   acceptAllocation(window.__selectedStrategy.alloc, k ? stratMeta(k).title : 'selected strategy');
-}
-function undoCommit(fid) {
-  delete state.committed[fid]; state.loggedInvalid.delete(fid); state.committedTow.delete(fid);
-  logChange('undo', fid, null, 'returned to the decision queue');
-  render();
 }
 /* ---- departure escalation: the airport flags and drafts; the airline decides ---- */
 let pendingEscalate = null;
@@ -1067,63 +1061,16 @@ function escalateMessage(f) {
   return { to, text: subj + '\n\n' + body };
 }
 
-function openEscalate(fid) {
-  pendingEscalate = fid;
-  const f = flightById(fid);
-  const m = escalateMessage(f);
-  const verb = f.watch === 'cancel' ? 'cancel' : 'hold';
-  document.getElementById('modalBox').innerHTML =
-    '<h3>Escalate ' + f.id + '</h3>' +
-    '<p class="sub">Recipients: ' + m.to + '. The airport recommends and escalates; it does not ' + verb + ' the flight itself.</p>' +
-    '<textarea id="escMsg" class="esc-msg" spellcheck="false">' + m.text + '</textarea>' +
-    '<div class="actions"><button class="mini ghost" onclick="closeModal()">Cancel</button>' +
-    '<button class="mini" id="copyBtn" onclick="copyEscMsg()">Copy message</button>' +
-    '<button class="mini primary" onclick="logEscalation()">Log escalation</button></div>';
-  document.getElementById('modal').classList.add('show');
-}
 
-function copyEscMsg() {
-  const ta = document.getElementById('escMsg');
-  const done = () => { const b = document.getElementById('copyBtn'); if (b) { b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy message'; }, 1400); } };
-  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, () => { ta.select(); document.execCommand('copy'); done(); });
-  else { ta.select(); document.execCommand('copy'); done(); }
-}
 
-function logEscalation() {
-  const f = flightById(pendingEscalate);
-  const m = escalateMessage(f);
-  state.escalations[f.id] = { type: f.watch, t: state.now };
-  logChange('escalate', f.id, null, (f.watch === 'cancel' ? 'cancellation candidate' : 'hold review') + ', escalated to ' + m.to);
-  pendingEscalate = null;
-  closeModal();
-  render();
-  showTab('changes');
-}
 
-function undoDepEscalation(fid) {
-  delete state.escalations[fid];
-  state.changeLog = state.changeLog.filter(e => !(e.fid === fid && e.action === 'escalate' && e.stand == null));
-  render();
-}
 
-function acknowledgeDep(fid) {
-  state.escalations[fid] = { type: 'ack', t: state.now };
-  logChange('ack', fid, null, 'acknowledged, monitoring, no escalation');
-  render();
-}
 
 function closeModal() { document.getElementById('modal').classList.remove('show'); pendingEscalate = null; }
 
 
 // Add or remove the crunch arrivals from the live picture. Removing also drops any
 // decisions logged against them so the committed picture stays consistent.
-function setCrunchFlights(on) {
-  if (on) { CRUNCH_FLIGHTS.forEach(f => { if (!FLIGHTS.some(g => g.id === f.id)) FLIGHTS.push(f); }); return; }
-  const ids = new Set(CRUNCH_FLIGHTS.map(f => f.id));
-  for (let i = FLIGHTS.length - 1; i >= 0; i--) if (ids.has(FLIGHTS[i].id)) FLIGHTS.splice(i, 1);
-  ids.forEach(id => { delete state.committed[id]; state.committedTow.delete(id); state.loggedInvalid.delete(id); });
-  state.changeLog = state.changeLog.filter(e => !ids.has(e.fid));
-}
 
 
 /* ----------------------------- render ------------------------------ */
@@ -1302,7 +1249,6 @@ function renderChanges() {
 }
 
 
-function toggleExpand(seq) { state.expandedSeq = state.expandedSeq === seq ? null : seq; renderChanges(); }
 
 // A flight's full life in this window: scheduled and ML-predicted on-block,
 // then every decision logged against it, in time order.
@@ -1539,70 +1485,10 @@ function towedFromRes(res) {
   return set;
 }
 
-async function runOptimization() {
-  const btn = document.getElementById('optBtn');
-  btn.disabled = true; btn.textContent = 'Solving…';
-  try {
-    const glpk = await window.__glpkReady;
-    const model = buildModel(DEFAULT_WEIGHTS, glpk);
-    const lp = {
-      name: 'apron',
-      objective: { direction: glpk.GLP_MIN, name: 'cost', vars: model.objVars },
-      subjectTo: model.subjectTo,
-      binaries: model.binaries
-    };
-    if (model.bounds) lp.bounds = model.bounds;
-    const t0 = Date.now();
-    const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
-    const ms = Date.now() - t0;
-    const towed = towedFromRes(res);
-    lastSolve = { res, model, ms, towed };
-    renderSolveMeta(res, model, ms, glpk);
-    renderAllocationInto('optResult', allocFromRes(res), towed);
-    renderRobust(allocFromRes(res), towed);
-    renderValuePanel('optValue', allocFromRes(res), towed);
-    const stale = document.getElementById('optStale'); if (stale) stale.innerHTML = '';  // a just-computed plan is current
-    document.getElementById('optAcceptBtn').style.display = 'inline-block';
-  } catch (e) {
-    console.error(e);
-    document.getElementById('optResult').innerHTML = '<p class="empty">Solver error: ' + (e.message || e) + '</p>';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Re-run apron optimization';
-  }
-}
 
 /* Phase G: rolling horizon. Advance the clock and re-solve, seeded from the committed
    picture with a stability term so already-committed stands are kept unless a move beats
    the stability penalty. This prevents the plan from thrashing on every re-optimization. */
-async function rollingReoptimize() {
-  const committed = {};
-  committedEntries().forEach(e => { if (e.stand && e.stand !== 'ESC') committed[e.fid] = e.stand; });
-  if (!Object.keys(committed).length) { runOptimization(); return; }   // nothing committed yet
-  const btn = document.getElementById('rollBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Re-solving…'; }
-  try {
-    state.now = Math.min(1020, state.now + SIM_STEP);
-    const glpk = await window.__glpkReady;
-    const model = buildModel(DEFAULT_WEIGHTS, glpk, { stability: committed });
-    const lp = { name: 'roll', objective: { direction: glpk.GLP_MIN, name: 'cost', vars: model.objVars }, subjectTo: model.subjectTo, binaries: model.binaries };
-    if (model.bounds) lp.bounds = model.bounds;
-    const t0 = Date.now();
-    const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
-    const ms = Date.now() - t0;
-    const towed = towedFromRes(res), alloc = allocFromRes(res);
-    lastSolve = { res, model, ms, towed };
-    let held = 0, changed = 0;
-    reallocFlights().forEach(f => { const c = committed[f.id]; if (c) { (alloc[f.id] === c ? held++ : changed++); } });
-    render();                          // advances the clock and dependent views (renders optResult, robustness, value)
-    renderSolveMeta(res, model, ms, glpk);
-    document.getElementById('optStale').innerHTML = '<div class="roll-note">Rolling re-optimization at <b>' + fmt(state.now) +
-      '</b>. Re-solved from the committed picture: <b>' + held + '</b> stand' + (held !== 1 ? 's' : '') + ' held, <b>' + changed + '</b> moved. ' +
-      'A move has to beat the stability penalty (' + CONFIG.stabilityPenalty + '), so with no new arrival information the committed plan stays put by design. On the live feed, only a material change re-stands a flight.</div>';
-    document.getElementById('optAcceptBtn').style.display = 'inline-block';
-    showTab('optimize');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Advance 5 min and re-optimize'; }
-  }
-}
 
 function statusLabel(status, glpk) {
   if (status === glpk.GLP_OPT) return 'Optimal';
@@ -1613,20 +1499,6 @@ function statusLabel(status, glpk) {
   return 'Undefined';
 }
 
-function renderSolveMeta(res, model, ms, glpk) {
-  const m = document.getElementById('solveMeta');
-  const escs = reallocFlights().filter(f => res.result.vars['x__' + f.id + '__ESC'] > 0.5).length;
-  m.className = 'solve-meta show';
-  m.innerHTML =
-    '<span class="chip ok">Status <b>' + statusLabel(res.result.status, glpk) + '</b></span>' +
-    '<span class="chip">Objective <b>' + res.result.z.toFixed(1) + '</b></span>' +
-    '<span class="chip">Solve time <b>' + ms + ' ms</b></span>' +
-    '<span class="chip">Binary vars <b>' + model.varCount + '</b></span>' +
-    '<span class="chip">Constraints <b>' + model.subjectTo.length + '</b></span>' +
-    '<span class="chip">Time conflicts <b>' + model.conflictCount + '</b></span>' +
-    (escs ? '<span class="chip"><b>' + escs + '</b> escalation candidate' + (escs > 1 ? 's' : '') + '</span>' : '') +
-    towMeta(res);
-}
 
 // Phase C solver readout: tows chosen and any tug/bus fleet saturation.
 function towMeta(res) {
@@ -1685,19 +1557,6 @@ function renderAllocationInto(elId, alloc, towed) {
 // Keep the displayed optimize plan in sync with the live picture: if the
 // conditions changed since it was computed, re-render it (now flagging any
 // stand that went out of service) and show a stale banner prompting a re-run.
-function renderOptimizePlan() {
-  if (!lastSolve || !document.getElementById('optResult')) return;
-  const alloc = allocFromRes(lastSolve.res);
-  renderAllocationInto('optResult', alloc, lastSolve.towed);
-  renderRobust(alloc, lastSolve.towed);
-  renderValuePanel('optValue', alloc, lastSolve.towed);
-  const bad = [...new Set(reallocFlights().map(f => alloc[f.id]).filter(sid => sid && sid !== 'ESC' && isStandOOS(standById(sid))))];
-  const el = document.getElementById('optStale');
-  if (el) el.innerHTML = bad.length
-    ? '<div class="stale-banner">This plan was computed before the picture changed. ' + bad.join(' and ') +
-      ' ' + (bad.length > 1 ? 'are' : 'is') + ' now out of service, so the plan is no longer valid. Re-run the optimization.</div>'
-    : '';
-}
 
 /* ------------------------- Phase D: robustness -------------------------
    The plan is built against predicted on-block times. Real arrivals land within
@@ -2062,41 +1921,6 @@ function objTotals(alloc) {
   return t;
 }
 
-function buildSingleObjLP(glpk, minKey, caps) {
-  const flights = reallocFlights();
-  const objVars = [], binaries = [], subjectTo = [];
-  const capKeys = Object.keys(caps || {});
-  const capVars = {}; capKeys.forEach(k => capVars[k] = []);
-  flights.forEach(f => {
-    const assignVars = [];
-    STANDS.filter(s => isEligible(f, s)).forEach(s => {
-      const v = 'x__' + f.id + '__' + s.id;
-      const p = costParts(f, s);
-      objVars.push({ name: v, coef: p[minKey] });
-      binaries.push(v);
-      assignVars.push({ name: v, coef: 1 });
-      capKeys.forEach(k => capVars[k].push({ name: v, coef: p[k] }));
-    });
-    const esc = 'x__' + f.id + '__ESC';
-    objVars.push({ name: esc, coef: CONFIG.escalateCost });
-    binaries.push(esc);
-    assignVars.push({ name: esc, coef: 1 });
-    subjectTo.push({ name: 'assign_' + f.id, vars: assignVars, bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 } });
-  });
-  STANDS.forEach(s => {
-    const cands = flights.filter(f => isEligible(f, s));
-    for (let i = 0; i < cands.length; i++) for (let j = i + 1; j < cands.length; j++) {
-      const [a0, a1] = flightWindow(cands[i]); const [b0, b1] = flightWindow(cands[j]);
-      if (overlapsBy(a0, a1, b0, b1, pairBuffer(cands[i], cands[j]))) subjectTo.push({
-        name: 'conf_' + s.id + '_' + cands[i].id + '_' + cands[j].id,
-        vars: [{ name: 'x__' + cands[i].id + '__' + s.id, coef: 1 }, { name: 'x__' + cands[j].id + '__' + s.id, coef: 1 }],
-        bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 }
-      });
-    }
-  });
-  capKeys.forEach(k => subjectTo.push({ name: 'cap_' + k, vars: capVars[k], bnds: { type: glpk.GLP_UP, ub: caps[k], lb: 0 } }));
-  return { objVars, binaries, subjectTo };
-}
 
 async function solvePoint(glpk, minKey, caps) {
   const m = buildSingleObjLP(glpk, minKey, caps);
@@ -2113,50 +1937,7 @@ function dominates(a, b) {
     (a.passenger < b.passenger || a.handler < b.handler || a.schedule < b.schedule);
 }
 
-async function computeParetoFront() {
-  const glpk = await window.__glpkReady;
-  const keys = ['passenger', 'handler', 'schedule'];
-  const corners = {};
-  for (const k of keys) corners[k] = await solvePoint(glpk, k, {});
-  const range = {};
-  keys.forEach(k => { const vals = keys.map(c => corners[c].f[k]); range[k] = { min: Math.min(...vals), max: Math.max(...vals) }; });
-  const pts = keys.map(k => corners[k]);
-  const G = 4;
-  for (let i = 0; i <= G; i++) for (let j = 0; j <= G; j++) {
-    const hCap = range.handler.min + (range.handler.max - range.handler.min) * i / G;
-    const sCap = range.schedule.min + (range.schedule.max - range.schedule.min) * j / G;
-    const p = await solvePoint(glpk, 'passenger', { handler: hCap + 0.5, schedule: sCap + 0.5 });
-    if (p) pts.push(p);
-  }
-  const seen = new Set(), uniq = [];
-  pts.forEach(p => { const sig = JSON.stringify(p.alloc); if (!seen.has(sig)) { seen.add(sig); uniq.push(p); } });
-  const nd = uniq.filter(p => !uniq.some(q => q !== p && dominates(q.f, p.f)));
-  const idxOf = key => { let bi = 0; nd.forEach((p, i) => { if (p.f[key] < nd[bi].f[key]) bi = i; }); return bi; };
-  return { points: nd, sig: { passenger: idxOf('passenger'), handler: idxOf('handler'), schedule: idxOf('schedule') } };
-}
 
-async function runPareto() {
-  const btn = document.getElementById('paretoBtn');
-  btn.disabled = true; btn.textContent = 'Tracing the Pareto front…';
-  try {
-    const t0 = Date.now();
-    paretoFront = await computeParetoFront();
-    const ms = Date.now() - t0;
-    const status = document.getElementById('paretoStatus');
-    status.className = 'solve-meta show';
-    status.innerHTML = '<span class="chip ok">Non-dominated points <b>' + paretoFront.points.length + '</b></span>' +
-      '<span class="chip">Method <b>epsilon-constraint</b></span>' +
-      '<span class="chip">Sweep time <b>' + ms + ' ms</b></span>';
-    selectedIdx = null;
-    renderParetoUI();
-    selectStrategy(paretoFront.sig.passenger);
-  } catch (e) {
-    console.error(e);
-    document.getElementById('paretoUI').innerHTML = '<p class="empty">Sweep error: ' + (e.message || e) + '</p>';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Re-compute trade-off front';
-  }
-}
 
 function stratMeta(key) {
   if (key === 'passenger') return { cls: 's-pax', color: '#88a8ed', title: 'Protect passengers', sub: 'Shortest walk, best connections' };
@@ -2170,29 +1951,6 @@ function allocSummary(alloc) {
   return contact + ' contact, ' + remote + ' remote · EK151 → ' + (alloc['EK151'] || 'ESC');
 }
 
-function renderParetoUI() {
-  const cards = ['passenger', 'handler', 'schedule'].map(key => {
-    const idx = paretoFront.sig[key]; const p = paretoFront.points[idx]; const m = stratMeta(key);
-    const bars = ['passenger', 'handler', 'schedule'].map(ax => {
-      const vals = paretoFront.points.map(pt => pt.f[ax]); const lo = Math.min(...vals), hi = Math.max(...vals);
-      const w = hi > lo ? Math.round((p.f[ax] - lo) / (hi - lo) * 100) : 0;
-      const best = ax === key;
-      return '<div class="metric"><span class="ml">' + ax + '</span><div class="mt"><div class="mf' + (best ? ' best' : '') + '" style="width:' + Math.max(6, w) + '%"></div></div><span class="mv">' + p.f[ax].toFixed(0) + '</span></div>';
-    }).join('');
-    return '<div class="strat ' + m.cls + '" id="strat-' + idx + '" onclick="selectStrategy(' + idx + ')">' +
-      '<div class="strat-h"><b>' + m.title + '</b><span class="tag2">' + m.sub + '</span></div>' +
-      '<div class="sum">' + allocSummary(p.alloc) + '</div>' + bars + '</div>';
-  }).join('');
-  document.getElementById('paretoUI').innerHTML =
-    '<div class="pareto-top"><div class="scatter-box"><h4>Pareto front</h4>' +
-    '<p class="hint">Each point is a non-dominated allocation. Down and to the left is better. Circle size is handler strain. Click a point or a strategy card.</p>' +
-    '<div id="scatter"></div></div><div class="strat-cards">' + cards + '</div></div>' +
-    '<div id="selHead" class="sel-head"></div>' +
-    '<button class="btn-primary" id="paretoAcceptBtn" style="margin:0 0 14px" onclick="acceptSelected()">Accept this strategy &rarr;</button>' +
-    '<div id="paretoAlloc"></div>' +
-    '<div class="opt-panels"><div id="paretoValue"></div></div>';
-  renderScatter();
-}
 
 function renderScatter() {
   const W = 540, H = 320, pl = 54, pb = 46, pt = 14, pr = 18;
@@ -2488,58 +2246,8 @@ function renderCounterfactual() {
     '<table class="data cf-table"><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>';
 }
 
-async function runTwin() {
-  const btn = document.getElementById('twinBtn');
-  btn.disabled = true; btn.textContent = 'Projecting…';
-  try {
-    const { alloc, towed, label } = await getActiveAllocation();
-    const sim = simulateTwin(alloc, towed);
-    const lbl = label + (towed && towed.size ? ' · ' + towed.size + ' towed to remote' : '');
-    const startIdx = Math.max(0, Math.min(sim.steps.length - 1, Math.round((state.now - SIM_T0) / SIM_STEP)));
-    window.__twin = { ...sim, idx: startIdx, label: lbl };
-    renderTwin();
-    window.__twin.counterfactuals = await computeCounterfactuals();
-    renderCounterfactual();
-    if (twinTimer) { clearInterval(twinTimer); twinTimer = null; }
-    twinPlay();   // start running forward from the current time
-  } catch (e) {
-    console.error(e);
-    document.getElementById('twinUI').innerHTML = '<p class="empty">Projection error: ' + (e.message || e) + '</p>';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Re-project';
-  }
-}
 
-function renderTwin() {
-  const t = window.__twin;
-  document.getElementById('twinUI').innerHTML =
-    '<div class="twin-controls">' +
-    '<button class="twin-play" id="twinPlayBtn" onclick="twinPlay()">Play</button>' +
-    '<input type="range" id="twinSlider" min="0" max="' + (t.steps.length - 1) + '" value="' + t.idx + '" oninput="twinScrub(this.value)">' +
-    '<span class="twin-clock" id="twinClock">' + fmt(t.steps[t.idx].t) + '</span>' +
-    '<span class="twin-strat">Projecting: <b>' + t.label + '</b>' + (t.slips ? ' · ' + t.slips + ' turnaround' + (t.slips > 1 ? 's' : '') + ' slipping' : '') + '</span>' +
-    '</div>' +
-    '<div class="tw-cards" id="twinGauges"></div>' +
-    '<div id="twinView"></div>' +
-    '<div class="twin-events"><h4>Cascade, as it emerges</h4><div id="twinEventList"></div></div>' +
-    '<div id="twinCounterfactual"></div>' +
-    '<div class="sankey-tip" id="sankeyTip"></div>';
-  renderTwinView();
-  renderTwinFrame();
-}
 
-function renderTwinView() {
-  document.getElementById('twinView').innerHTML =
-    '<div class="twin-charts">' +
-    '<div class="gantt-box"><h4>Stand occupancy, projected forward</h4>' +
-    '<p class="hint">Each bar is an aircraft on its stand. Amber is a departure, blue an arrival, deep blue a slipped-turnaround conflict. Dashed bars and links show a tow to a remote parking position, which frees the contact stand mid-dwell. The line is the current time.</p>' +
-    '<div id="ganttSvg"></div></div>' +
-    '<div class="gantt-box"><h4>Passenger flow through the terminal</h4>' +
-    '<p class="hint">A Sankey of the disrupted arrivals, from stand to passport control to the connection bank and onward departures. Ribbon width is passengers; a node turns deep blue when it congests. Hover any node or ribbon for detail.</p>' +
-    '<div id="sankeySvg"></div></div>' +
-    '</div>';
-  renderGantt();
-}
 
 function renderGantt() {
   const t = window.__twin, occ = t.occ;
@@ -2730,38 +2438,6 @@ function gaugeCard(label, valHtml, cls, spark) {
   return '<div class="tw-card"><div class="lbl">' + label + '</div><div class="val ' + (cls || '') + '">' + valHtml + '</div>' + spark + '</div>';
 }
 
-function renderTwinFrame() {
-  const t = window.__twin, s = t.steps[t.idx];
-  document.getElementById('twinClock').textContent = fmt(s.t);
-  const sl = document.getElementById('twinSlider'); if (sl) sl.value = t.idx;
-  if (t.geom && document.getElementById('twinNow')) {
-    const nx = t.geom.x0 + (s.t - t.geom.t0) / (t.geom.t1 - t.geom.t0) * t.geom.w;
-    const nl = document.getElementById('twinNow'); nl.setAttribute('x1', nx.toFixed(1)); nl.setAttribute('x2', nx.toFixed(1));
-  }
-  renderSankey();
-  const qNcls = s.qN > 250 ? 'crit' : s.qN > 80 ? 'warn' : '';
-  const qScls = s.qS > 250 ? 'crit' : s.qS > 80 ? 'warn' : '';
-  const hcls = s.hPeak >= 1 ? 'crit' : s.hPeak >= 0.8 ? 'warn' : '';
-  const bcls = s.bPeak >= 1 ? 'crit' : s.bPeak >= 0.85 ? 'warn' : '';
-  document.getElementById('twinGauges').innerHTML =
-    gaugeCard('Passport queue · non-Schengen', Math.round(s.qN) + ' <small>waiting</small>', qNcls, sparkline(t.series.qN, t.idx, '#170d81', 0)) +
-    gaugeCard('Passport queue · Schengen', Math.round(s.qS) + ' <small>waiting</small>', qScls, sparkline(t.series.qS, t.idx, '#4e55ab', 0)) +
-    gaugeCard('Peak handler load', Math.round(s.hPeak * 100) + '% <small>' + (s.hWho || '') + '</small>', hcls, sparkline(t.series.hPeak, t.idx, '#4e55ab', 100)) +
-    gaugeCard('Peak baggage belt', Math.round(s.bPeak * 100) + '% <small>' + (s.bWho || '') + '</small>', bcls, sparkline(t.series.bPeak, t.idx, '#88a8ed', 100)) +
-    gaugeCard('Connections at risk', s.connRisk + ' <small>passengers</small>', s.connRisk > 0 ? 'crit' : '', sparkline(t.series.connRisk, t.idx, '#170d81', 0)) +
-    gaugeCard('Turnarounds slipping', t.slips + ' <small>of ' + reallocFlights().length + '</small>', t.slips > 0 ? 'warn' : '', '<svg width="100%" viewBox="0 0 150 34" style="height:34px"></svg>');
-  document.getElementById('twinEventList').innerHTML = t.events.length
-    ? t.events.map(e => {
-        const list = e.sources ? { lbl: 'Source', items: e.sources } : e.affected ? { lbl: 'Affected', items: e.affected } : null;
-        const sub = list && list.items.length
-          ? '<div class="evt-sub">' + list.lbl + ': ' + list.items.map(x =>
-              '<span class="evt-chip">' + disName(flightById(x.fid)) + '</span> ' + x.detail).join(' &nbsp;·&nbsp; ') + '</div>'
-          : '';
-        return '<div class="evt' + (e.t > s.t ? ' future' : '') + '"><span class="et">' + fmt(e.t) +
-          '</span><span class="dotc ' + e.type + '"></span><span class="ed">' + e.text + sub + '</span></div>';
-      }).join('')
-    : '<p class="cap">No downstream conflicts surfaced for this allocation.</p>';
-}
 
 function twinScrub(v) { window.__twin.idx = +v; renderTwinFrame(); }
 
@@ -2833,8 +2509,8 @@ function setConfig(el) {
 }
 
 function applyConfig() {
-  render();                              // apron and committed validity reflect the new constants
-  if (window.__glpk) runOptimization();  // re-solve so the Optimize tab shows the effect
+  render();                                                         // live surfaces reflect the new constants
+  if (v4sim.optimize) { v4sim.lastSolveAt = -1; v4MaybeSolve(); }   // re-run the continuous optimizer under the new config
 }
 
 function resetConfig() {
@@ -2849,17 +2525,6 @@ function resetConfig() {
 /* --------------------------- clock / tabs --------------------------- */
 function step(mins) { state.now += mins; if (state.now > 1020) state.now = 1020; render(); }
 
-function togglePlay() {
-  state.playing = !state.playing;
-  const btn = document.getElementById('playBtn');
-  btn.textContent = state.playing ? 'Pause feed' : 'Play feed';
-  btn.classList.toggle('on', state.playing);
-  if (state.playing) {
-    state.timer = setInterval(() => { step(1); if (state.now >= 1020) togglePlay(); }, 700);
-  } else {
-    clearInterval(state.timer);
-  }
-}
 
 /* ===================== Phase V4.2: 48-hour feed engine =====================
    The 48-hour schedule plays forward. The clock is the source of truth; the live
