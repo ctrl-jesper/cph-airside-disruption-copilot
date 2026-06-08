@@ -365,6 +365,11 @@
 
   .chg-summary { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 16px; }
   .chg-list { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .chg-row2 { display: grid; grid-template-columns: 132px 1fr auto; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .chg-row2:last-child { border-bottom: none; }
+  .chg-row2 .ct { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .chg-row2 .ctag { color: var(--muted); font-size: 11.5px; }
+  .chg-row2.disr { background: #fffaf0; }
   .chg-row { display: grid; grid-template-columns: 18px 54px 130px 1fr auto; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
   .chg-row:last-child { border-bottom: none; }
   .chg-row.clickable { cursor: pointer; }
@@ -963,24 +968,7 @@ function effectiveStand(f) {
   return (v && v !== 'ESC') ? v : null;
 }
 
-function occupantOf(standId) {
-  return FLIGHTS.find(f => effectiveStand(f) === standId && f.dir !== 'dep' &&
-    state.now >= f.predOn && state.now < f.predOn + (f.dwell || 45));
-}
-function nextOn(standId) {
-  return FLIGHTS.filter(f => effectiveStand(f) === standId && f.dir !== 'dep' && f.predOn > state.now)
-    .sort((a, b) => a.predOn - b.predOn)[0];
-}
 
-function handlerLoad(id) {
-  return FLIGHTS.filter(f => f.handler === id && effectiveStand(f) && f.dir !== 'dep' &&
-    state.now >= f.predOn && state.now < f.predOn + (f.dwell || 45)).length;
-}
-function beltLoad(belt) {
-  return FLIGHTS.filter(f => { const sid = effectiveStand(f); return sid && f.dir !== 'dep' && standById(sid).belt === belt &&
-    state.now >= f.predOn && state.now < f.predOn + (f.dwell || 45); })
-    .reduce((sum, f) => sum + f.bags, 0);
-}
 
 /* ----------------- commit, validity, revalidation -----------------
    A committed assignment is a human decision (state.committed). On every
@@ -1017,29 +1005,7 @@ function checkCommittedValid(fid) {
   return { ok: true };
 }
 
-function recomputeCV() {
-  const valid = {}, invalid = [];
-  committedEntries().forEach(e => {
-    const r = checkCommittedValid(e.fid);
-    if (r.escalated) valid[e.fid] = 'ESC';
-    else if (r.ok) valid[e.fid] = e.stand;
-    else invalid.push({ fid: e.fid, stand: e.stand, reason: r.reason });
-  });
-  CV = { valid, invalid };
-}
 
-function revalidateLog() {
-  const invalidIds = new Set(CV.invalid.map(i => i.fid));
-  CV.invalid.forEach(i => {
-    if (!state.loggedInvalid.has(i.fid)) { state.loggedInvalid.add(i.fid); logChange('supersede', i.fid, i.stand, i.reason); }
-  });
-  Array.from(state.loggedInvalid).forEach(fid => {
-    if (!invalidIds.has(fid)) {
-      state.loggedInvalid.delete(fid);
-      if (state.committed[fid]) logChange('restore', fid, state.committed[fid], 'conditions cleared, assignment valid again');
-    }
-  });
-}
 
 function needsDecisionFlights() { return reallocFlights().filter(f => !CV.valid[f.id]); }
 
@@ -1072,15 +1038,6 @@ function acceptSelected() {
 function undoCommit(fid) {
   delete state.committed[fid]; state.loggedInvalid.delete(fid); state.committedTow.delete(fid);
   logChange('undo', fid, null, 'returned to the decision queue');
-  render();
-}
-function resetLive() {
-  state.committed = {}; state.changeLog = []; state.loggedInvalid = new Set();
-  setCrunchFlights(false);
-  state.disruptions = { standFaults: false, handlerShortage: false, standCrunch: false };
-  state.escalations = {};
-  state.committedTow = new Set();
-  state.expandedSeq = null; state.logFilter = null;
   render();
 }
 /* ---- departure escalation: the airport flags and drafts; the airline decides ---- */
@@ -1157,14 +1114,6 @@ function acknowledgeDep(fid) {
 
 function closeModal() { document.getElementById('modal').classList.remove('show'); pendingEscalate = null; }
 
-function toggleDisruption(key) {
-  state.disruptions[key] = !state.disruptions[key];
-  if (key === 'standCrunch') setCrunchFlights(state.disruptions.standCrunch);
-  const labels = { standFaults: 'stand faults (E30, C26)', handlerShortage: SHORTAGE_HANDLER + ' crew shortage, capacity ' + SHORTAGE_CAP,
-    standCrunch: 'wide-body parking crunch (E30 out, SQ352 and QR163 both want C24)' };
-  logChange('inject', null, null, (state.disruptions[key] ? 'Injected: ' : 'Cleared: ') + labels[key]);
-  render();
-}
 
 // Add or remove the crunch arrivals from the live picture. Removing also drops any
 // decisions logged against them so the committed picture stays consistent.
@@ -1176,33 +1125,6 @@ function setCrunchFlights(on) {
   state.changeLog = state.changeLog.filter(e => !ids.has(e.fid));
 }
 
-function flightStatus(f) {
-  const onStand = sid => (state.now >= f.predOn && state.now < f.predOn + (f.dwell || 45))
-    ? { txt: 'On stand ' + sid + ' · clears ' + fmt(f.predOn + (f.dwell || 45)), cls: 'pos' } : null;
-  if (f.needsRealloc) {
-    const v = CV.valid[f.id];
-    if (v === 'ESC') return { txt: 'Escalated, redirect/cancel', cls: 'warn' };
-    if (v) {
-      const os = onStand(v);
-      if (os) return os;
-      if (state.now < f.predOn) return { txt: 'Assigned ' + v + ' · arrives ' + fmt(f.predOn), cls: 'pos' };
-      return { txt: 'Cleared ' + v, cls: 'muted' };
-    }
-    const inv = CV.invalid.find(i => i.fid === f.id);
-    if (inv) return { txt: 'Re-decide: ' + inv.reason, cls: 'crit' };
-    const eta = f.predOn - state.now;
-    if (eta > 0) return { txt: 'Inbound, needs stand', cls: 'warn' };
-    return { txt: 'On final, no stand', cls: 'crit' };
-  }
-  const esc = state.escalations[f.id];
-  if (esc && esc.type === 'cancel') return { txt: 'Escalated, cancellation candidate', cls: 'warn' };
-  if (esc && esc.type === 'hold') return { txt: 'Escalated, hold review', cls: 'warn' };
-  if (esc && esc.type === 'ack') return { txt: 'Acknowledged, monitoring', cls: 'muted' };
-  if (f.watch === 'hold') return { txt: 'Departure, hold review', cls: 'muted' };
-  if (f.watch === 'cancel') return { txt: 'Departure, cancel review', cls: 'muted' };
-  if (state.now < f.predOn) return { txt: 'Inbound · arrives ' + fmt(f.predOn), cls: 'muted' };
-  return onStand(f.stand) || { txt: 'Cleared', cls: 'muted' };
-}
 
 /* ----------------------------- render ------------------------------ */
 function render() {
@@ -1212,15 +1134,6 @@ function render() {
   renderChanges();
 }
 
-function buildSummary() {
-  const reDecide = CV.invalid.length;
-  const parts = ['Stand B16 is out of service after a jet bridge fault, so inbound aircraft are off-slot and the apron must be re-allocated. EK151, an Emirates A380, can only take the single remote code-F stand, R8.'];
-  if (state.disruptions.standFaults) parts.push('A further fault has taken E30 and C26 out of service; the revalidation sweep re-checks every committed assignment.');
-  if (state.disruptions.handlerShortage) parts.push(SHORTAGE_HANDLER + ' reports a crew shortage and cannot service all simultaneous turnarounds.');
-  if (state.disruptions.standCrunch) parts.push('Apron works have taken E30 out, leaving C24 the only code-E contact stand. Two long-haul arrivals, SQ352 and QR163, both need it. Towing the long-dwell SQ352 to remote parking frees C24 for QR163.');
-  if (reDecide) parts.push(reDecide + (reDecide > 1 ? ' committed assignments are' : ' committed assignment is') + ' no longer valid and ' + (reDecide > 1 ? 'have' : 'has') + ' returned to the queue.');
-  return parts.join(' ');
-}
 
 // U3: the live operations sidebar, derived from the feed picture at v4.now (no longer V3 state).
 function renderFeed() {
@@ -1361,57 +1274,33 @@ function feedFlightStatus(f, t) {
   return t < f.predOn ? { txt: 'Departs &middot; ' + fmt(f.predOn), cls: '' } : { txt: 'Departed', cls: 'muted' };
 }
 
-function setLogFilter(fid) { state.logFilter = fid; renderChanges(); }
 
+// U8: unified event log = the optimizer's reassignments (v4sim.moves) plus the injected
+// disruptions, on one timeline against the feed clock, most recent first.
 function renderChanges() {
-  const el = document.getElementById('changesUI');
-  if (!el) return;
-  const assigned = Object.values(CV.valid).filter(v => v !== 'ESC').length;
-  const esc = Object.values(CV.valid).filter(v => v === 'ESC').length;
-  const redecide = CV.invalid.length;
-  const needs = needsDecisionFlights().length;
+  const el = document.getElementById('changesUI'); if (!el) return;
+  const moves = v4sim.moves;
+  const reassigns = moves.filter(m => m.to !== 'escalated').length;
+  const escs = moves.filter(m => m.to === 'escalated').length;
   const summary = '<div class="chg-summary">' +
-    '<span class="chip ok">Assigned <b>' + assigned + '</b></span>' +
-    '<span class="chip">Escalated <b>' + esc + '</b></span>' +
-    (redecide ? '<span class="chip">Re-decide <b>' + redecide + '</b></span>' : '') +
-    '<span class="chip">Awaiting decision <b>' + needs + '</b></span></div>';
-
-  if (!state.changeLog.length) {
-    el.innerHTML = summary + '<p class="cap">No events yet. Run the optimizer or pick a strategy, then accept it. Decisions, strategy changes, and picture changes are logged here and revalidate continuously against the live picture.</p>';
+    '<span class="chip ok">Reassignments <b>' + reassigns + '</b></span>' +
+    '<span class="chip">Escalations <b>' + escs + '</b></span>' +
+    '<span class="chip">Disruptions <b>' + v4sim.disruptions.length + '</b></span></div>';
+  const events = [];
+  moves.forEach(m => events.push({ t: m.t, kind: 'move', main: '<b>' + m.id + '</b> ' + m.from + ' &rarr; ' + (m.to === 'escalated' ? '<span class="pill neg">escalated</span>' : m.to), tag: m.reason }));
+  v4sim.disruptions.forEach(d => {
+    events.push({ t: d.time, kind: 'disr', main: '<span class="pill">' + V4_DISRUPT[d.type].label + '</span> on ' + d.target, tag: d.applied ? 'applied' : 'pending' });
+    if (d.cleared && d.duration) events.push({ t: d.time + d.duration, kind: 'disr', main: V4_DISRUPT[d.type].label + ' on ' + d.target, tag: 'cleared' });
+  });
+  events.sort((a, b) => (b.t - a.t) || (a.kind === 'disr' ? -1 : 1));
+  if (!events.length) {
+    el.innerHTML = summary + '<p class="cap">No events yet. Turn on continuous optimization and play the 48h feed, or inject a disruption; every reassignment and disruption is logged here against the feed clock, most recent first.</p>';
     return;
   }
-
-  const fids = [...new Set(state.changeLog.filter(e => e.fid).map(e => e.fid))]
-    .sort((a, b) => flightWindow(flightById(a))[0] - flightWindow(flightById(b))[0]);
-  if (state.logFilter && !fids.includes(state.logFilter)) state.logFilter = null;
-  const filterBar = '<div class="log-filter"><span class="lf' + (!state.logFilter ? ' on' : '') + '" onclick="setLogFilter(null)">All events</span>' +
-    fids.map(fid => '<span class="lf' + (state.logFilter === fid ? ' on' : '') + '" onclick="setLogFilter(\'' + fid + '\')">' + disName(flightById(fid)) + '</span>').join('') + '</div>';
-
-  const entries = state.logFilter ? state.changeLog.filter(e => e.fid === state.logFilter) : state.changeLog;
-  const list = entries.length
-    ? '<div class="chg-list">' + entries.map(changeRow).join('') + '</div>'
-    : '<p class="cap">No events for this flight.</p>';
-  el.innerHTML = summary + filterBar + list;
+  el.innerHTML = summary + '<div class="chg-list">' + events.map(e =>
+    '<div class="chg-row2 ' + e.kind + '"><span class="ct">' + v4fmt(e.t) + '</span><span class="cmain">' + e.main + '</span><span class="ctag">' + e.tag + '</span></div>').join('') + '</div>';
 }
 
-function changeRow(e) {
-  const labels = { assign: 'Assigned', escalate: 'Escalated', ack: 'Acknowledged', supersede: 'Re-stand', restore: 'Restored', undo: 'Reverted', inject: 'Picture change', accept: 'Plan accepted' };
-  const expandable = !!e.fid;
-  const open = state.expandedSeq === e.seq;
-  const fl = e.fid ? '<b>' + disName(flightById(e.fid)) + '</b>' : '<span class="band">system</span>';
-  const standTxt = (e.stand && e.stand !== 'ESC') ? ' &rarr; ' + e.stand : '';
-  const isDepEsc = e.action === 'escalate' && e.stand == null;
-  const canUndo = ((e.action === 'assign' || e.action === 'escalate') && state.committed[e.fid] === e.stand) || (isDepEsc && !!state.escalations[e.fid]);
-  const undoFn = isDepEsc ? 'undoDepEscalation' : 'undoCommit';
-  const undo = canUndo ? '<button class="chg-undo" onclick="event.stopPropagation(); ' + undoFn + '(\'' + e.fid + '\')">Undo</button>' : '<span></span>';
-  const chev = expandable ? '<span class="chev">&#9656;</span>' : '<span></span>';
-  const row = '<div class="chg-row ' + e.action + (expandable ? ' clickable' : '') + (open ? ' open' : '')+ '"' +
-    (expandable ? ' onclick="toggleExpand(' + e.seq + ')"' : '') + '>' + chev +
-    '<span class="ct">' + fmt(e.t) + '</span>' +
-    '<span class="cf"><span class="act-pill ' + e.action + '">' + (labels[e.action] || e.action) + '</span></span>' +
-    '<span class="cr">' + fl + standTxt + ' <span class="reason">' + (e.reason || '') + '</span></span>' + undo + '</div>';
-  return row + (open && e.fid ? flightTimelineHtml(e.fid) : '');
-}
 
 function toggleExpand(seq) { state.expandedSeq = state.expandedSeq === seq ? null : seq; renderChanges(); }
 
@@ -3684,6 +3573,7 @@ function showTab(name) {
   if (name === 'value') renderValueView();
   if (name === 'apron') renderApron();          // repointed V3 tabs render at the current feed clock on open
   if (name === 'flights') renderFlights();
+  if (name === 'changes') renderChanges();
 }
 
 v4RunsLoad();
