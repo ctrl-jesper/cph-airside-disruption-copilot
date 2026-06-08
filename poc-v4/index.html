@@ -1290,31 +1290,33 @@ function renderApron() {
     { name: 'Pier E', zone: 'Mixed', ids: ['E30', 'E32'] },
     { name: 'Remote apron', zone: 'Bus boarding', ids: ['R6', 'R8', 'R10', 'R12', 'R14', 'R16'] },
   ];
+  const t = v4.now;
   document.getElementById('apronView').innerHTML = piers.map(p =>
     '<div class="pier"><div class="pier-head"><h3>' + p.name + '</h3><span class="z">' +
     p.zone + '</span></div><div class="stand-grid">' +
-    p.ids.map(standCardHtml).join('') + '</div></div>'
+    p.ids.map(id => standCardHtml(id, t)).join('') + '</div></div>'
   ).join('');
 }
 
-function standCardHtml(id) {
+// U4: a stand card derived from the feed picture at time t.
+function standCardHtml(id, t) {
   const s = standById(id);
-  const occ = occupantOf(id);
+  const occ = standOccupant(id, t);
   let cls = 'free', occHtml;
-  if (isStandOOS(s)) {
+  if (standOfflineNow(id, t)) {
     cls = 'oos';
-    occHtml = '<div class="stand-occ oos-txt">Out of service &middot; ' + standOOSReason(s) + '</div>';
+    occHtml = '<div class="stand-occ oos-txt">Out of service &middot; ' + feedOosReason(id, t) + '</div>';
   } else if (occ) {
     cls = 'occupied';
     const clears = fmt(occ.predOn + (occ.dwell || 45));
-    occHtml = '<div class="stand-occ"><span class="who">' + disName(occ) + '</span> &middot; ' +
-      occ.ac + (occ.needsRealloc ? ' <span class="band">(assigned)</span>' : '') +
+    const moved = v4StandOf(occ) !== occ.plannedStand;
+    occHtml = '<div class="stand-occ"><span class="who">' + occ.id + '</span> &middot; ' +
+      occ.ac + (moved ? ' <span class="band">(reassigned)</span>' : '') +
       '<br><span class="band">clears ' + clears + '</span></div>';
   } else {
-    const nx = nextOn(id);
-    const lbl = nx && nx.needsRealloc ? 'assigned ' : 'next ';
+    const nx = FEED.filter(f => f.dir === 'arr' && v4StandOf(f) === id && f.predOn > t).sort((a, b) => a.predOn - b.predOn)[0];
     occHtml = '<div class="stand-occ free-txt">Available' +
-      (nx ? ' &middot; ' + lbl + disName(nx) + ' ~' + fmt(nx.predOn) : '') + '</div>';
+      (nx ? ' &middot; next ' + nx.id + ' ~' + fmt(nx.predOn) : '') + '</div>';
   }
   const tag = s.type === 'remote'
     ? '<span class="tag remote">Remote</span>'
@@ -3067,7 +3069,10 @@ function v4Gantt() {
 
 function v4Frame() {
   const hc = document.getElementById('clockText'); if (hc) hc.textContent = v4fmt(v4.now);   // header clock follows the single feed clock
-  if (Math.floor(v4.now) !== v4._sideMin) renderFeed();                                       // live sidebar tracks the feed clock (once per sim-minute)
+  if (Math.floor(v4.now) !== v4._sideMin) {                                                    // once per sim-minute: refresh the live surfaces that track the feed clock
+    renderFeed();
+    const ap = document.getElementById('pane-apron'); if (ap && ap.classList.contains('active')) renderApron();
+  }
   const cl = document.querySelector('#feedControls .feed-clock'); if (cl) cl.textContent = v4fmt(v4.now);
   const sc = document.querySelector('#feedControls .feed-scrub'); if (sc && document.activeElement !== sc) sc.value = Math.round(v4.now);
   const lockNow = v4StrategyLockRemaining();                      // refresh the strategy lock countdown only when it changes
@@ -3528,6 +3533,7 @@ function showTab(name) {
   if (name === 'feed') v4Render();
   else if (v4.playing) { v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; }
   if (name === 'value') renderValueView();
+  if (name === 'apron') renderApron();          // repointed V3 tabs render at the current feed clock on open
 }
 
 v4RunsLoad();
