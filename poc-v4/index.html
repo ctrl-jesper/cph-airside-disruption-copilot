@@ -512,29 +512,22 @@
     </section>
 
     <section class="tabpane" id="pane-optimize">
-      <p class="opt-intro">The whole apron is re-optimized in one pass as a binary assignment problem, solved by a real mixed-integer solver, <code>glpk.js</code> (GLPK compiled to WebAssembly), running locally in the browser. Each <code>x[flight,stand]</code> is a 0/1 decision. <b>Hard constraints</b> are size code, stand availability, and no two aircraft overlapping in time on one stand. <b>Soft costs</b>, weighted into the objective, are passenger walking distance and connections, ground-handler load, and schedule stability including remote-stand and zone-change penalties. This solves one balanced objective; the Trade-offs tab traces the full Pareto front of non-dominated strategies.</p>
+      <p class="opt-intro">The optimizer solves the apron one rolling window at a time as a binary assignment problem, with <code>glpk.js</code> (GLPK compiled to WebAssembly) running locally in the browser. Each <code>x[flight,stand]</code> is a 0/1 decision. <b>Hard constraints</b> are size code, stand availability, and no two aircraft overlapping in time on one stand. <b>Soft costs</b>, weighted by the current strategy, are passenger walking distance and connections, ground-handler balance, and schedule stability with remote-stand and zone penalties. This is one solve of the window at the feed clock and is a preview only; the 48h feed runs exactly this continuously on a cadence.</p>
 
-      <button class="btn-primary" id="optBtn" onclick="runOptimization()">Run apron optimization</button>
-      <button class="btn-ghost" id="rollBtn" onclick="rollingReoptimize()" style="margin-left:8px">Advance 5 min and re-optimize</button>
+      <button class="btn-primary" id="optBtn" onclick="v4OptimizeNow()">Optimize the current window</button>
+      <span class="hint" id="optClock" style="margin-left:10px"></span>
 
       <div class="solve-meta" id="solveMeta"></div>
-
-      <div id="optStale"></div>
-
       <div id="optResult"></div>
-
-      <div class="opt-panels"><div id="optRobust"></div><div id="optValue"></div></div>
-
-      <button class="btn-primary" id="optAcceptBtn" style="display:none;margin-top:14px" onclick="acceptOptimize()">Accept this allocation &rarr;</button>
     </section>
 
     <section class="tabpane" id="pane-pareto">
-      <p class="opt-intro">There is no single best allocation. The three objectives conflict: protecting passenger walking distance worsens handler balance, and maximizing contact-stand use sacrifices schedule stability. The solver traces the <b>Pareto front</b> of non-dominated allocations with an epsilon-constraint sweep over the same MIP, minimizing one objective while bounding the others, then surfaces three signature strategies. You, or the governance owner, choose which trade-off to accept. The chosen strategy is what the digital twin projects forward.</p>
+      <p class="opt-intro">There is no single best allocation: protecting passenger walking distance worsens handler balance, and maximising contact-stand use sacrifices schedule stability. Here the window at the feed clock is solved four ways, balanced and with each objective protected in turn, and the resulting trade-off is charted. You, or the governance owner, choose which to run; the 48h feed's strategy control applies the choice continuously.</p>
 
-      <button class="btn-primary" id="paretoBtn" onclick="runPareto()">Compute trade-off front</button>
+      <button class="btn-primary" id="paretoBtn" onclick="v4Tradeoffs()">Compare strategies on the current window</button>
+      <span class="hint" id="paretoClock" style="margin-left:10px"></span>
 
       <div class="solve-meta" id="paretoStatus"></div>
-
       <div id="paretoUI"></div>
     </section>
 
@@ -1206,13 +1199,10 @@ function flightStatus(f) {
 
 /* ----------------------------- render ------------------------------ */
 function render() {
-  recomputeCV();
-  revalidateLog();
   renderFeed();
   renderApron();
   renderFlights();
   renderChanges();
-  renderOptimizePlan();
 }
 
 function buildSummary() {
@@ -3128,14 +3118,17 @@ function v4StandOk(f, s) {
   if (s.zone !== 'M' && s.zone !== f.zone) return false;        // Schengen / non-Schengen separation
   return true;
 }
-function v4CostFS(f, s) {
+// Separable soft-cost components, so a strategy/Pareto sweep can re-weight them (U6).
+function v4CostParts(f, s) {
   const remote = s.type === 'remote', sizeGap = CODE_NUM[s.code] - CODE_NUM[f.code];
-  const passenger = (f.pax / 100) * s.walk + (remote ? f.conPax * 0.4 : 0);
-  const schedule = (remote ? CONFIG.remotePenalty : 0) + sizeGap * CONFIG.sizeGapPenalty;
-  const handler = Math.abs(apronX(s) - HANDLER_BASE[f.handler]) * 1.5;
-  const w = v4sim.weights || CONFIG.weights;
-  return w.passenger * passenger + w.handler * handler + w.schedule * schedule;
+  return {
+    passenger: (f.pax / 100) * s.walk + (remote ? f.conPax * 0.4 : 0),
+    schedule: (remote ? CONFIG.remotePenalty : 0) + sizeGap * CONFIG.sizeGapPenalty,
+    handler: Math.abs(apronX(s) - HANDLER_BASE[f.handler]) * 1.5,
+  };
 }
+function v4CostW(f, s, w) { const p = v4CostParts(f, s); return w.passenger * p.passenger + w.handler * p.handler + w.schedule * p.schedule; }
+function v4CostFS(f, s) { return v4CostW(f, s, v4sim.weights || CONFIG.weights); }
 function v4ArrPhase(f, t) {
   const on = f.predOn, off = on + (f.dwell || 45);
   if (t < on) return 'inbound';
@@ -3188,64 +3181,153 @@ function feedFlightsAround(t, back, fwd) {
    decisions later as the clock advances. This keeps the MIP in the same size class as the
    V3 whole-apron solve and avoids pathologically hard set-packing instances. */
 const V4_DECISION_CAP = 16;
+// Shared windowed-model builder (U6). Pure: returns the MIP for the window at time t under
+// weights w. Used by the continuous optimizer (v4Solve, mutating) and the Optimize / Trade-offs
+// explainers (v4SolveWindow, non-mutating).
+function v4BuildWindowModel(t, w, glpk) {
+  const win = CONFIG.windowMin;
+  const windowArrs = FEED.filter(f => f.dir === 'arr' && f.plannedStand && (f.predOn + (f.dwell || 45)) > t && f.predOn < t + win);
+  const forced = windowArrs.filter(f => v4IsCommitted(f, t) && v4sim.assign[f.id] && v4sim.oos.has(v4sim.assign[f.id]));
+  const free = windowArrs.filter(f => !v4IsCommitted(f, t)).sort((a, b) => a.predOn - b.predOn).slice(0, V4_DECISION_CAP);
+  const decision = [...forced, ...free];
+  const decSet = new Set(decision.map(f => f.id));
+  const fixed = windowArrs.filter(f => !decSet.has(f.id));
+  const blocked = {}; STANDS.forEach(s => blocked[s.id] = []);
+  fixed.forEach(f => { const sid = v4sim.assign[f.id]; if (sid && blocked[sid]) blocked[sid].push([f.predOn, f.predOn + (f.dwell || 45)]); });
+  const standFree = (f, s) => { const fo = f.predOn, fe = f.predOn + (f.dwell || 45); return !blocked[s.id].some(wd => fo < wd[1] && wd[0] < fe); };
+  const objVars = [], binaries = [], subjectTo = [], elig = {};
+  decision.forEach(f => {
+    const cur = v4sim.assign[f.id], phase = v4ArrPhase(f, t), assignVars = [];
+    elig[f.id] = STANDS.filter(s => v4StandOk(f, s) && standFree(f, s));
+    elig[f.id].forEach(s => {
+      const v = 'x_' + f.id + '_' + s.id;
+      let coef = v4CostW(f, s, w);
+      if (cur && cur !== s.id) coef += phase === 'boarding' ? V4_STAB.boarding : phase === 'parked' ? V4_STAB.parked : V4_STAB.inbound;
+      objVars.push({ name: v, coef }); binaries.push(v); assignVars.push({ name: v, coef: 1 });
+    });
+    const esc = 'x_' + f.id + '_ESC';
+    objVars.push({ name: esc, coef: CONFIG.escalateCost }); binaries.push(esc); assignVars.push({ name: esc, coef: 1 });
+    subjectTo.push({ name: 'a_' + f.id, vars: assignVars, bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 } });
+  });
+  STANDS.forEach(s => {
+    const cands = decision.filter(f => elig[f.id].includes(s));
+    for (let i = 0; i < cands.length; i++) for (let j = i + 1; j < cands.length; j++) {
+      const a = cands[i], b = cands[j];
+      if (a.predOn < b.predOn + (b.dwell || 45) && b.predOn < a.predOn + (a.dwell || 45))
+        subjectTo.push({ name: 'c_' + s.id + '_' + a.id + '_' + b.id, vars: [{ name: 'x_' + a.id + '_' + s.id, coef: 1 }, { name: 'x_' + b.id + '_' + s.id, coef: 1 }], bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 } });
+    }
+  });
+  return { objVars, binaries, subjectTo, decision, elig, windowArrs, fixed };
+}
 async function v4Solve(t) {
   const glpk = window.__glpk; if (!glpk || v4sim.solving) return;
   v4sim.solving = true;
   try {
-    const win = CONFIG.windowMin;
-    const windowArrs = FEED.filter(f => f.dir === 'arr' && f.plannedStand &&
-      (f.predOn + (f.dwell || 45)) > t && f.predOn < t + win);
-    if (!windowArrs.length) return;
-    const forced = windowArrs.filter(f => v4IsCommitted(f, t) && v4sim.assign[f.id] && v4sim.oos.has(v4sim.assign[f.id]));
-    const free = windowArrs.filter(f => !v4IsCommitted(f, t)).sort((a, b) => a.predOn - b.predOn).slice(0, V4_DECISION_CAP);
-    const decision = [...forced, ...free];
-    const decSet = new Set(decision.map(f => f.id));
-    const fixed = windowArrs.filter(f => !decSet.has(f.id));     // committed and far-out flights hold their stand
-
-    const blocked = {}; STANDS.forEach(s => blocked[s.id] = []);
-    fixed.forEach(f => { const sid = v4sim.assign[f.id]; if (sid && blocked[sid]) blocked[sid].push([f.predOn, f.predOn + (f.dwell || 45)]); });
-    const standFree = (f, s) => { const fo = f.predOn, fe = f.predOn + (f.dwell || 45); return !blocked[s.id].some(w => fo < w[1] && w[0] < fe); };
-
-    const objVars = [], binaries = [], subjectTo = [];
-    const elig = {};
-    decision.forEach(f => {
-      const cur = v4sim.assign[f.id], phase = v4ArrPhase(f, t), assignVars = [];
-      elig[f.id] = STANDS.filter(s => v4StandOk(f, s) && standFree(f, s));
-      elig[f.id].forEach(s => {
-        const v = 'x_' + f.id + '_' + s.id;
-        let coef = v4CostFS(f, s);
-        if (cur && cur !== s.id) coef += phase === 'boarding' ? V4_STAB.boarding : phase === 'parked' ? V4_STAB.parked : V4_STAB.inbound;
-        objVars.push({ name: v, coef }); binaries.push(v); assignVars.push({ name: v, coef: 1 });
-      });
-      const esc = 'x_' + f.id + '_ESC';                          // escape hatch keeps the model feasible
-      objVars.push({ name: esc, coef: CONFIG.escalateCost }); binaries.push(esc); assignVars.push({ name: esc, coef: 1 });
-      subjectTo.push({ name: 'a_' + f.id, vars: assignVars, bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 } });
-    });
-    STANDS.forEach(s => {
-      const cands = decision.filter(f => elig[f.id].includes(s));
-      for (let i = 0; i < cands.length; i++) for (let j = i + 1; j < cands.length; j++) {
-        const a = cands[i], b = cands[j];
-        if (a.predOn < b.predOn + (b.dwell || 45) && b.predOn < a.predOn + (a.dwell || 45))
-          subjectTo.push({ name: 'c_' + s.id + '_' + a.id + '_' + b.id, vars: [{ name: 'x_' + a.id + '_' + s.id, coef: 1 }, { name: 'x_' + b.id + '_' + s.id, coef: 1 }], bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 } });
-      }
-    });
-    const lp = { name: 'roll', objective: { direction: glpk.GLP_MIN, name: 'cost', vars: objVars }, subjectTo, binaries };
+    const m = v4BuildWindowModel(t, v4sim.weights || CONFIG.weights, glpk);
+    if (!m.windowArrs.length) return;
+    const lp = { name: 'roll', objective: { direction: glpk.GLP_MIN, name: 'cost', vars: m.objVars }, subjectTo: m.subjectTo, binaries: m.binaries };
     const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
-    decision.forEach(f => {
+    m.decision.forEach(f => {
       let chosen = null;
-      elig[f.id].forEach(s => { if (res.result.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; });
-      if (!chosen && res.result.vars['x_' + f.id + '_ESC'] > 0.5) chosen = 'ESC';   // solver escalated: no feasible stand
+      m.elig[f.id].forEach(s => { if (res.result.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; });
+      if (!chosen && res.result.vars['x_' + f.id + '_ESC'] > 0.5) chosen = 'ESC';
       if (chosen && chosen !== v4sim.assign[f.id]) {
         const from = v4sim.assign[f.id];
         const reason = chosen === 'ESC' ? 'no feasible stand (escalated)'
           : from && v4sim.oos.has(from) ? 'stand unserviceable' : v4IsCommitted(f, t) ? 'forced re-decide' : 'optimization';
         v4sim.moves.push({ t, id: f.id, from: from || '—', to: chosen === 'ESC' ? 'escalated' : chosen, reason, phase: v4ArrPhase(f, t) });
-        v4sim.assign[f.id] = chosen;     // 'ESC' makes v4StandOf resolve to no stand, so the ledger strands it
+        v4sim.assign[f.id] = chosen;
       }
     });
     v4sim.solves++; v4sim.cost = v4PlanCost();
   } catch (e) { console.error('v4Solve', e); }
   finally { v4sim.solving = false; }
+}
+// Non-mutating windowed solve for the Optimize / Trade-offs explainers: returns the proposed
+// allocation, the decision set, and solve meta, without touching v4sim.assign or the move log.
+async function v4SolveWindow(t, w) {
+  const glpk = window.__glpk; if (!glpk) return null;
+  const m = v4BuildWindowModel(t, w, glpk);
+  const alloc = {}; m.fixed.forEach(f => alloc[f.id] = v4sim.assign[f.id]);
+  if (!m.decision.length) return { alloc, decision: [], fixed: m.fixed, windowArrs: m.windowArrs, meta: { decisionCount: 0, binaries: 0, constraints: 0, ms: 0, status: 'No decisions in window' } };
+  const lp = { name: 'opt', objective: { direction: glpk.GLP_MIN, name: 'cost', vars: m.objVars }, subjectTo: m.subjectTo, binaries: m.binaries };
+  const a = performance.now();
+  const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+  const ms = Math.round(performance.now() - a);
+  m.decision.forEach(f => { let chosen = 'ESC'; m.elig[f.id].forEach(s => { if (res.result.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; }); alloc[f.id] = chosen; });
+  return { alloc, decision: m.decision, fixed: m.fixed, windowArrs: m.windowArrs, meta: { decisionCount: m.decision.length, binaries: m.binaries.length, constraints: m.subjectTo.length, ms, status: statusLabel(res.result.status, glpk) } };
+}
+
+/* ===== U6: Optimize and Trade-offs explainers, on the live feed window =====
+   Both run the non-mutating windowed solve at v4.now; they preview the MIP and the trade-off
+   without committing to the run (the 48h feed's continuous optimizer is what commits). */
+async function v4OptimizeNow() {
+  const btn = document.getElementById('optBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Solving…'; }
+  try {
+    const t = v4.now, r = await v4SolveWindow(t, v4sim.weights || CONFIG.weights), m = r.meta;
+    const cl = document.getElementById('optClock'); if (cl) cl.textContent = 'at the feed clock ' + v4fmt(t) + ' · strategy ' + (V4_STRATEGIES[v4sim.strategy] ? V4_STRATEGIES[v4sim.strategy].label : v4sim.strategy);
+    document.getElementById('solveMeta').innerHTML =
+      '<span class="chip ok">Status <b>' + m.status + '</b></span>' +
+      '<span class="chip">Decision flights <b>' + m.decisionCount + '</b></span>' +
+      '<span class="chip">Binary vars <b>' + m.binaries + '</b></span>' +
+      '<span class="chip">Constraints <b>' + m.constraints + '</b></span>' +
+      '<span class="chip">Solve <b>' + m.ms + ' ms</b></span>';
+    const rows = r.decision.slice().sort((a, b) => a.predOn - b.predOn).map(f => {
+      const sid = r.alloc[f.id], cur = f.plannedStand, moved = sid !== cur;
+      const proposed = sid === 'ESC' ? '<span class="pill neg">escalate</span>' : sid;
+      const verdict = sid === 'ESC' ? '' : moved ? '<span class="pill pos">reassign</span>' : '<span class="band">hold</span>';
+      return '<tr><td><b>' + f.id + '</b> <span class="band">' + f.ac + '/' + f.code + '</span></td><td>' + fmt(f.predOn) + '</td><td>' + (cur || '—') + '</td><td>' + proposed + '</td><td>' + verdict + '</td></tr>';
+    }).join('');
+    document.getElementById('optResult').innerHTML = r.decision.length
+      ? '<div class="opt-moves"><h4>Proposed allocation for the window <span class="band">' + (CONFIG.windowMin / 60).toFixed(CONFIG.windowMin % 60 ? 1 : 0) + ' h horizon · preview only</span></h4>' +
+        '<table class="mini"><tr><th>Flight</th><th>On-block</th><th>Planned</th><th>Proposed</th><th></th></tr>' + rows + '</table></div>'
+      : '<p class="cap">No flights to decide in the window at this feed time. Scrub to a busier period.</p>';
+  } finally { if (btn) { btn.disabled = false; btn.textContent = 'Optimize the current window'; } }
+}
+
+const V4_TRADE = [
+  { key: 'balanced', label: 'Balanced', w: { passenger: 1, handler: 1, schedule: 1 }, color: '#170d81' },
+  { key: 'passengers', label: 'Protect passengers', w: { passenger: 3, handler: 1, schedule: 1 }, color: '#88a8ed' },
+  { key: 'handlers', label: 'Protect handlers', w: { passenger: 1, handler: 3, schedule: 1 }, color: '#4e55ab' },
+  { key: 'schedule', label: 'Protect schedule', w: { passenger: 1, handler: 1, schedule: 3 }, color: '#e8590c' },
+];
+function allocComponents(alloc) {
+  const c = { passenger: 0, handler: 0, schedule: 0, remote: 0, esc: 0 };
+  Object.keys(alloc).forEach(id => {
+    const sid = alloc[id]; if (sid === 'ESC' || sid == null) { if (sid === 'ESC') c.esc++; return; }
+    const f = FEED.find(x => x.id === id), s = STANDS.find(x => x.id === sid); if (!f || !s) return;
+    const p = v4CostParts(f, s); c.passenger += p.passenger; c.handler += p.handler; c.schedule += p.schedule; if (s.type === 'remote') c.remote++;
+  });
+  return c;
+}
+async function v4Tradeoffs() {
+  const btn = document.getElementById('paretoBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Solving…'; }
+  try {
+    const t = v4.now, results = [];
+    for (const tr of V4_TRADE) { const r = await v4SolveWindow(t, tr.w); results.push({ ...tr, comp: allocComponents(r.alloc), meta: r.meta }); }
+    const cl = document.getElementById('paretoClock'); if (cl) cl.textContent = 'at the feed clock ' + v4fmt(t);
+    document.getElementById('paretoStatus').innerHTML = '<span class="chip ok">' + results.length + ' strategies solved on the window</span>';
+    renderTradeoffs(results);
+  } finally { if (btn) { btn.disabled = false; btn.textContent = 'Compare strategies on the current window'; } }
+}
+function renderTradeoffs(results) {
+  const W = 760, H = 320, pl = 64, pb = 46, pt = 16, pr = 150;
+  const xs = results.map(r => r.comp.passenger), ys = results.map(r => r.comp.schedule);
+  const xmax = Math.max(1, ...xs), ymax = Math.max(1, ...ys);
+  const sx = v => pl + v / xmax * (W - pl - pr), sy = v => (H - pb) - v / ymax * (H - pb - pt);
+  let svg = '';
+  for (let g = 0; g <= 4; g++) { const yy = pt + g / 4 * (H - pb - pt); svg += '<line x1="' + pl + '" y1="' + yy.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + yy.toFixed(1) + '" stroke="#eef2fa"/>'; }
+  svg += '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/><line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/>';
+  svg += '<text x="' + ((pl + W - pr) / 2) + '" y="' + (H - 8) + '" font-size="11" fill="#6b7299" text-anchor="middle">Passenger cost (walk + connections) &rarr;</text>';
+  svg += '<text x="16" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 16 ' + (H / 2) + ')">Schedule cost (remote + zone) &rarr;</text>';
+  results.forEach(r => { const cx = sx(r.comp.passenger), cy = sy(r.comp.schedule); svg += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="7" fill="' + r.color + '"/>'; });
+  results.forEach((r, i) => { const ly = pt + 8 + i * 22, lx = W - pr + 12; svg += '<circle cx="' + (lx + 6) + '" cy="' + ly + '" r="6" fill="' + r.color + '"/><text x="' + (lx + 18) + '" y="' + (ly + 4) + '" font-size="11.5" fill="#1b2350">' + r.label + '</text>'; });
+  const rows = results.map(r => '<tr><td><span class="vc-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + r.color + '"></span> ' + r.label + '</td><td>' + Math.round(r.comp.passenger) + '</td><td>' + Math.round(r.comp.handler) + '</td><td>' + Math.round(r.comp.schedule) + '</td><td>' + r.comp.remote + '</td><td>' + r.comp.esc + '</td></tr>').join('');
+  document.getElementById('paretoUI').innerHTML =
+    '<div class="gantt-box"><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:340px">' + svg + '</svg></div>' +
+    '<div class="opt-moves"><h4>Strategy comparison <span class="band">cost components of each window allocation</span></h4>' +
+    '<table class="mini"><tr><th>Strategy</th><th>Passenger</th><th>Handler</th><th>Schedule</th><th>Remotes</th><th>Escalations</th></tr>' + rows + '</table></div>' +
+    '<p class="cap">Each point is the window solved under one strategy. Protecting an objective lowers its cost and raises the others; the gap between the points is the trade-off the operator governs. Apply a strategy continuously on the 48h feed.</p>';
 }
 
 function v4MaybeSolve() {
