@@ -324,6 +324,12 @@
   .rl-dot.off { background: #d6deec; }
   .lk-btn { background: #f6f8fd; border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: var(--midnight); }
   .lk-btn.del { color: #a11; }
+  .rot-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #f0f3fa; }
+  .rot-tail { font-weight: 700; font-size: 12px; color: var(--midnight); min-width: 64px; }
+  .rot-chain { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .rot-leg { font-size: 11.5px; background: #eef2fa; color: var(--muted); border-radius: 6px; padding: 3px 8px; font-variant-numeric: tabular-nums; }
+  .rot-leg.late { background: #fde7e7; color: #a11; font-weight: 600; }
+  .rot-arr { color: var(--muted); font-size: 12px; }
   .evt { display: flex; gap: 10px; font-size: 12.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
   .evt:last-child { border-bottom: none; }
   .evt.future { opacity: 0.38; }
@@ -537,9 +543,10 @@
     </section>
 
     <section class="tabpane" id="pane-twin">
-      <p class="twin-intro">The digital twin takes the allocation you chose on the Trade-offs tab and projects it forward in time. The whole-apron optimizer places aircraft for the picture as it is now. The twin runs the clock on and reveals the second-order consequences a snapshot cannot see: passport queues building, baggage belts loading, ground handlers stretching, and connections coming under threat. This is the depth-over-time the per-flight tool cannot reach.</p>
+      <p class="twin-intro">The optimizer places aircraft for the picture as it is now. The digital twin runs the clock on from the feed time and reveals the second-order consequences a snapshot cannot see: an early-turnaround delay propagating along an aircraft's rotation to push later legs off-slot, and connecting passengers coming under threat as their inbound flight slips or is sent to a remote stand. This is the depth-over-time the per-flight tool cannot reach, projected over the current allocation.</p>
 
-      <button class="btn-primary" id="twinBtn" onclick="runTwin()">Project the chosen strategy forward</button>
+      <button class="btn-primary" id="twinBtn" onclick="v4TwinNow()">Project the current allocation forward</button>
+      <span class="hint" id="twinClock" style="margin-left:10px"></span>
 
       <div id="twinUI"></div>
     </section>
@@ -3328,6 +3335,59 @@ function renderTradeoffs(results) {
     '<div class="opt-moves"><h4>Strategy comparison <span class="band">cost components of each window allocation</span></h4>' +
     '<table class="mini"><tr><th>Strategy</th><th>Passenger</th><th>Handler</th><th>Schedule</th><th>Remotes</th><th>Escalations</th></tr>' + rows + '</table></div>' +
     '<p class="cap">Each point is the window solved under one strategy. Protecting an objective lowers its cost and raises the others; the gap between the points is the trade-off the operator governs. Apply a strategy continuously on the 48h feed.</p>';
+}
+
+/* ===== U7: digital twin on the feed (scoped) =====
+   Projects the current allocation forward from the feed clock, scoped to what FEED supports:
+   the rotation delay cascade (an early-turnaround delay propagating along an aircraft's legs)
+   and connection-at-risk (connecting pax whose inbound slips or lands at a remote stand). */
+const V4_TWIN_HORIZON = 360;   // project 6 hours forward
+function v4TwinProject(t, horizon) {
+  const t1 = t + horizon;
+  const arrs = FEED.filter(f => f.dir === 'arr' && f.predOn >= t && f.predOn < t1);
+  let totalDelay = 0, connAtRisk = 0, remotePax = 0, esc = 0, delayed = 0;
+  arrs.forEach(f => {
+    const dl = f.delayMin || 0; totalDelay += dl; if (dl > 0) delayed++;
+    const sid = v4StandOf(f), s = sid && sid !== 'ESC' ? STANDS.find(x => x.id === sid) : null;
+    if (!s) esc++;
+    else { if (s.type === 'remote') remotePax += f.conPax || 0; if (dl >= 20 || s.type === 'remote') connAtRisk += f.conPax || 0; }
+  });
+  // delay-over-time: total carried arrival delay in 30-min buckets across the horizon
+  const bins = []; for (let b = t; b < t1; b += 30) { const d = arrs.filter(f => f.predOn >= b && f.predOn < b + 30).reduce((a, f) => a + (f.delayMin || 0), 0); bins.push({ t: b, delay: d }); }
+  // rotation cascade: group horizon arrivals by tail, keep chains that carry delay, worst first
+  const byTail = {}; arrs.forEach(f => { (byTail[f.tail] = byTail[f.tail] || []).push(f); });
+  const rotations = Object.keys(byTail).map(tail => {
+    const legs = byTail[tail].slice().sort((a, b) => a.predOn - b.predOn);
+    return { tail, legs, maxDelay: Math.max(...legs.map(l => l.delayMin || 0)) };
+  }).filter(r => r.maxDelay > 0).sort((a, b) => b.maxDelay - a.maxDelay).slice(0, 6);
+  return { arrs, bins, rotations, metrics: { count: arrs.length, totalDelay, connAtRisk, remotePax, esc, delayed } };
+}
+async function v4TwinNow() {
+  const t = v4.now, p = v4TwinProject(t, V4_TWIN_HORIZON), m = p.metrics;
+  const cl = document.getElementById('twinClock'); if (cl) cl.textContent = 'from the feed clock ' + v4fmt(t) + ' over the next ' + (V4_TWIN_HORIZON / 60) + ' h';
+  const cards = '<div class="tw-cards">' +
+    '<div class="tw-card"><div class="lbl">Arrivals in horizon</div><div class="val">' + m.count + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Carried delay <small>minutes</small></div><div class="val' + (m.totalDelay > 200 ? ' warn' : '') + '">' + m.totalDelay + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Connections at risk <small>pax</small></div><div class="val' + (m.connAtRisk > 0 ? ' warn' : '') + '">' + m.connAtRisk + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Remote-served <small>pax</small></div><div class="val">' + m.remotePax + '</div></div>' +
+    '<div class="tw-card"><div class="lbl">Escalations</div><div class="val' + (m.esc > 0 ? ' crit' : '') + '">' + m.esc + '</div></div></div>';
+  // delay-over-time chart
+  const W = 760, H = 220, pl = 50, pb = 36, pt = 14, pr = 16;
+  const ymax = Math.max(1, ...p.bins.map(b => b.delay));
+  const bw = (W - pl - pr) / Math.max(1, p.bins.length);
+  let svg = '';
+  for (let g = 0; g <= 3; g++) { const v = ymax * g / 3, y = (H - pb) - v / ymax * (H - pb - pt); svg += '<line x1="' + pl + '" y1="' + y.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + y.toFixed(1) + '" stroke="#eef2fa"/><text x="' + (pl - 6) + '" y="' + (y + 3).toFixed(1) + '" font-size="9.5" fill="#6b7299" text-anchor="end">' + Math.round(v) + '</text>'; }
+  p.bins.forEach((b, i) => { const h = b.delay / ymax * (H - pb - pt), x = pl + i * bw; svg += '<rect x="' + (x + 1).toFixed(1) + '" y="' + ((H - pb) - h).toFixed(1) + '" width="' + (bw - 2).toFixed(1) + '" height="' + h.toFixed(1) + '" rx="1.5" fill="#170d81"/>'; if (i % 2 === 0) svg += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - pb + 14) + '" font-size="9" fill="#6b7299" text-anchor="middle">' + fmt(b.t) + '</text>'; });
+  svg += '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/><line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/>';
+  const chart = '<div class="gantt-box"><h4>Carried arrival delay over the horizon <span class="band">propagated from early turnarounds</span></h4><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:240px">' + svg + '</svg></div>';
+  // rotation cascade
+  const rotHtml = p.rotations.length ? p.rotations.map(r => {
+    const chain = r.legs.map(l => '<span class="rot-leg' + ((l.delayMin || 0) > 0 ? ' late' : '') + '">' + l.id + ' ' + fmt(l.predOn) + ((l.delayMin || 0) > 0 ? ' +' + l.delayMin + 'm' : '') + '</span>').join('<span class="rot-arr">&rarr;</span>');
+    return '<div class="rot-row"><span class="rot-tail">' + r.tail + '</span><div class="rot-chain">' + chain + '</div></div>';
+  }).join('') : '<p class="cap" style="margin:4px 0 0">No propagated delay in this horizon. Inject a late arrival or longer turnaround on the feed to see the cascade.</p>';
+  const rotBox = '<div class="opt-moves"><h4>Rotation delay cascade <span class="band">aircraft with a delayed leg, worst first</span></h4>' + rotHtml + '</div>';
+  document.getElementById('twinUI').innerHTML = cards + chart + rotBox +
+    '<p class="cap">Scoped to the feed: the twin projects the current allocation forward and surfaces propagated rotation delay and connection risk. It does not model passport queues or baggage belts; those need a passenger-flow model a production build would add.</p>';
 }
 
 function v4MaybeSolve() {
