@@ -266,6 +266,9 @@
   .tw-card svg { display: block; margin-top: 5px; }
   #feedNow .tw-cards { grid-template-columns: repeat(4, 1fr); }
   @media (max-width: 1080px) { #feedNow .tw-cards { grid-template-columns: repeat(2, 1fr); } }
+  .global-bar { position: sticky; top: 0; z-index: 40; background: var(--bg); border-bottom: 1px solid var(--border); padding: 8px 28px; }
+  .global-bar .feed-bar { margin-bottom: 0; }
+  .feed-lbl { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
   .feed-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow); margin-bottom: 16px; }
   .feed-bar .btn-ghost { background: #f6f8fd; color: var(--midnight); border: 1px solid var(--border); border-radius: 8px; padding: 9px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
   .feed-scrub { flex: 1 1 240px; min-width: 180px; accent-color: var(--twilight); }
@@ -452,6 +455,8 @@
     <span class="badge">Synthetic data &middot; Proof of concept</span>
   </div>
 </header>
+
+<div id="globalControls" class="global-bar"></div>
 
 <div class="wrap">
   <aside class="left">
@@ -1895,8 +1900,8 @@ function renderRealizedHTML() {
     (v4runs.length
       ? '<table class="mini"><tr><th>Compare</th><th>Run</th><th>Settings</th><th>Total</th><th></th></tr>' + runRows + '</table>'
       : '<p class="hint">No saved runs. Set up a scenario (disruptions, optimization on or off, a strategy), play the feed to the end, then Save. Save a second run with the opposite optimization setting and tick both to overlay them here.</p>') + '</div>';
-  return '<div class="rl-head"><div class="rl-tot"><div class="lbl">Incurred to ' + v4fmt(now) + '</div><div class="val">' + eur(realized.total) + '</div></div>' +
-    '<div class="rl-tot"><div class="lbl">Current-plan full run <small>' + (v4sim.optimize ? 'optimization on' : 'optimization off') + '</small></div><div class="val">' + eur(curve.total) + '</div></div></div>' +
+  return '<div class="rl-head"><div class="rl-tot"><div class="lbl">Incurred to ' + v4fmt(now) + ' <small>actual, rises as you play</small></div><div class="val">' + eur(realized.total) + '</div></div>' +
+    '<div class="rl-tot"><div class="lbl">Projected full run <small>forecast of this plan · ' + (v4sim.optimize || v4sim.applied ? 'optimized' : 'naive') + '</small></div><div class="val" style="color:var(--storm)">' + eur(curve.total) + '</div></div></div>' +
     '<div class="gantt-box"><h4>Realized cost over the 48-hour run <span class="band">solid = incurred to the clock; dashed = forecast of the current plan; amber = now</span></h4>' +
     '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:340px">' + svg + '</svg>' + legend + '</div>' +
     '<div class="vcases vcases-4">' + breakdown + '</div>' + runsPanel +
@@ -2582,7 +2587,6 @@ function v4Render() {
   const el = document.getElementById('feedUI'); if (!el) return;
   const ganttSub = v4sim.optimize ? 'live optimized allocation' : 'static planned allocation';
   el.innerHTML =
-    '<div id="feedControls"></div>' +
     '<div class="opt-toggle"><button class="twin-play ' + (v4sim.optimize ? 'on' : '') + '" onclick="v4ToggleOptimize()">Continuous optimization: ' + (v4sim.optimize ? 'ON' : 'OFF') + '</button>' +
     '<span class="hint">Re-optimize every ' + CONFIG.optCadence + ' min over a ' + (CONFIG.windowMin / 60).toFixed(CONFIG.windowMin % 60 ? 1 : 0) + ' h window; commit ' + CONFIG.commitLead + ' min before on-block. Change these in Config.</span></div>' +
     '<div class="strat-box"><h4>Trade-off strategy <span class="band">sets the objective weights the next solve uses; the cadence lock limits how often it can change</span></h4><div id="feedStrategy"></div></div>' +
@@ -2597,8 +2601,9 @@ function v4Render() {
 }
 
 function v4Controls() {
-  const el = document.getElementById('feedControls'); if (!el) return;
+  const el = document.getElementById('globalControls'); if (!el) return;   // persistent bar, visible across all tabs
   el.innerHTML = '<div class="feed-bar">' +
+    '<span class="feed-lbl">Feed clock</span>' +
     '<button class="twin-play" onclick="v4Play()">' + (v4.playing ? 'Pause' : 'Play') + '</button>' +
     '<button class="btn-ghost" onclick="v4Reset()">Reset</button>' +
     '<input type="range" class="feed-scrub" min="0" max="' + SIM_HORIZON + '" value="' + Math.round(v4.now) + '" oninput="v4Scrub(this.value)">' +
@@ -2634,8 +2639,8 @@ function v4Frame() {
     renderFeed();
     const ap = document.getElementById('pane-apron'); if (ap && ap.classList.contains('active')) renderApron();
   }
-  const cl = document.querySelector('#feedControls .feed-clock'); if (cl) cl.textContent = v4fmt(v4.now);
-  const sc = document.querySelector('#feedControls .feed-scrub'); if (sc && document.activeElement !== sc) sc.value = Math.round(v4.now);
+  const cl = document.querySelector('#globalControls .feed-clock'); if (cl) cl.textContent = v4fmt(v4.now);
+  const sc = document.querySelector('#globalControls .feed-scrub'); if (sc && document.activeElement !== sc) sc.value = Math.round(v4.now);
   const lockNow = v4StrategyLockRemaining();                      // refresh the strategy lock countdown only when it changes
   if (lockNow !== v4._lockShown) { v4._lockShown = lockNow; v4StrategyBar(); }
   const g = document.getElementById('feedGantt'), nl = document.getElementById('feedNowLine');
@@ -2999,7 +3004,9 @@ const V4_STRATEGIES = {
 };
 const V4_CADENCES = [{ v: 0, label: 'No limit' }, { v: 30, label: '30 min' }, { v: 60, label: '1 h' }, { v: 120, label: '2 h' }];
 function v4StrategyLockRemaining() {
-  if (!v4sim.cadenceLock || v4sim.lastStrategyChange === -Infinity) return 0;
+  // The cadence lock is a minimum sim-time dwell that only matters while the run is playing;
+  // when paused the operator is configuring, so changes are free (else a paused clock traps them).
+  if (!v4sim.cadenceLock || !v4.playing || v4sim.lastStrategyChange === -Infinity) return 0;
   return Math.max(0, Math.round(v4sim.lastStrategyChange + v4sim.cadenceLock - v4.now));
 }
 function v4SetStrategy(name) {
@@ -3274,6 +3281,7 @@ function showTab(name) {
 v4RunsLoad();
 render();
 renderConfig();
+v4Controls();   // populate the persistent feed-clock bar on load
 </script>
 </body>
 </html>
