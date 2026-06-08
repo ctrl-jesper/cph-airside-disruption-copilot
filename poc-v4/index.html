@@ -3001,7 +3001,10 @@ function v4Play() {
   else { if (v4.now >= SIM_HORIZON) v4.now = 0; v4.playing = true; v4.lastTs = null; v4.raf = requestAnimationFrame(v4Tick); }
   v4Controls();
 }
-function v4Scrub(m) { v4.now = Math.max(0, Math.min(SIM_HORIZON, +m)); if (v4ApplyDue(v4.now) && v4sim.optimize) v4sim.lastSolveAt = -1; v4Frame(); if (v4sim.optimize) v4MaybeSolve(); v4DisruptPanel(); v4Gantt(); }
+// Rebuild the live out-of-service set from the disruption records for the given time, so a
+// backward scrub does not leave a stand that has since been cleared incorrectly online (or vice versa).
+function v4SyncOos(t) { v4sim.oos = new Set(v4sim.disruptions.filter(d => d.type === 'standOffline' && d.time <= t && t < d.time + d.duration).map(d => d.target)); }
+function v4Scrub(m) { v4.now = Math.max(0, Math.min(SIM_HORIZON, +m)); v4ApplyDue(v4.now); v4SyncOos(v4.now); if (v4sim.optimize) v4sim.lastSolveAt = -1; v4Frame(); if (v4sim.optimize) v4MaybeSolve(); v4DisruptPanel(); v4Gantt(); }
 function v4SetSpeed(i) { v4.speedIdx = +i; v4Controls(); }
 function v4Reset() {
   v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; v4.now = 0;
@@ -3009,7 +3012,7 @@ function v4Reset() {
   v4sim.disruptions.forEach(d => { d.applied = false; d.cleared = false; });   // re-arm the set so the rerun replays it
   v4sim.lastStrategyChange = -Infinity; v4._lockShown = undefined;             // clear any stale strategy lock at t=0
   if (v4sim.strategy !== 'adaptive') v4sim.weights = { ...V4_STRATEGIES[v4sim.strategy].w };
-  if (v4sim.optimize) v4InitPlan();
+  v4InitPlan();                          // always reseed assign and clear moves, so no stale run state leaks into the ledger
   v4Render();
 }
 
@@ -3188,11 +3191,13 @@ async function v4Solve(t) {
     decision.forEach(f => {
       let chosen = null;
       elig[f.id].forEach(s => { if (res.result.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; });
+      if (!chosen && res.result.vars['x_' + f.id + '_ESC'] > 0.5) chosen = 'ESC';   // solver escalated: no feasible stand
       if (chosen && chosen !== v4sim.assign[f.id]) {
         const from = v4sim.assign[f.id];
-        const reason = from && v4sim.oos.has(from) ? 'stand unserviceable' : v4IsCommitted(f, t) ? 'forced re-decide' : 'optimization';
-        v4sim.moves.push({ t, id: f.id, from: from || '—', to: chosen, reason, phase: v4ArrPhase(f, t) });
-        v4sim.assign[f.id] = chosen;
+        const reason = chosen === 'ESC' ? 'no feasible stand (escalated)'
+          : from && v4sim.oos.has(from) ? 'stand unserviceable' : v4IsCommitted(f, t) ? 'forced re-decide' : 'optimization';
+        v4sim.moves.push({ t, id: f.id, from: from || '—', to: chosen === 'ESC' ? 'escalated' : chosen, reason, phase: v4ArrPhase(f, t) });
+        v4sim.assign[f.id] = chosen;     // 'ESC' makes v4StandOf resolve to no stand, so the ledger strands it
       }
     });
     v4sim.solves++; v4sim.cost = v4PlanCost();
@@ -3269,7 +3274,8 @@ function v4StrategyBar() {
 
 function v4ToggleOptimize() {
   v4sim.optimize = !v4sim.optimize;
-  if (v4sim.optimize) { v4InitPlan(); v4sim.lastSolveAt = -1; v4MaybeSolve(); }
+  v4InitPlan();                          // reseed the plan and clear moves on either toggle, so the off baseline carries no optimized-run cost
+  if (v4sim.optimize) { v4sim.lastSolveAt = -1; v4MaybeSolve(); }
   v4Render();
 }
 
@@ -3344,7 +3350,14 @@ function v4InjectType(type) {
 function v4ApplyOne(d) {
   const f = FEED.find(x => x.id === d.target);
   if (d.type === 'standOffline') v4sim.oos.add(d.target);
-  else if (d.type === 'handlerCap') v4sim.handlerCap[d.target] = d.params.cap;
+  else if (d.type === 'handlerCap') {
+    v4sim.handlerCap[d.target] = d.params.cap;
+    // the reduced crew can only turn `cap` aircraft promptly in the window; the rest slip,
+    // which the ledger picks up as delay. Stand reallocation cannot relieve this (the handler
+    // is fixed per flight), so it appears in both the optimize-off and optimize-on runs.
+    const aff = FEED.filter(x => x.dir === 'arr' && x.handler === d.target && x.predOn >= d.time && x.predOn < d.time + d.duration).sort((a, b) => a.predOn - b.predOn);
+    aff.forEach((x, i) => { if (i >= d.params.cap) x.delayMin = (x.delayMin || 0) + 20; });
+  }
   else if (f && d.type === 'earlyArrival') { f.predOn = Math.max(0, f.predOn - d.params.min); }
   else if (f && d.type === 'lateArrival') { f.predOn += d.params.min; f.delayMin = (f.delayMin || 0) + d.params.min; }
   else if (f && d.type === 'depDelay') { f.predOn += d.params.min; f.delayMin = (f.delayMin || 0) + d.params.min; }
@@ -3366,7 +3379,8 @@ function v4ClearDisruptions() {
   v4sim.disruptions.forEach(d => { if (d.applied && !d.cleared) v4ClearOne(d); });
   v4sim.disruptions = []; v4sim.oos.clear(); v4sim.handlerCap = {};
   FEED = generate48hSchedule();                 // restore clean timings the in-place mutations changed
-  if (v4sim.optimize) { v4InitPlan(); v4sim.lastSolveAt = -1; v4MaybeSolve(); }
+  v4InitPlan();                                 // reseed the plan and clear moves regardless of optimize state
+  if (v4sim.optimize) { v4sim.lastSolveAt = -1; v4MaybeSolve(); }
   v4Render();
 }
 function v4DisruptPanel() {
@@ -3381,7 +3395,7 @@ function v4DisruptPanel() {
     (v4sim.disruptions.length ? '<button class="btn-ghost" onclick="v4ClearDisruptions()">Clear all</button>' : '') + '</div>' +
     (v4sim.disruptions.length
       ? '<table class="mini"><tr><th>Time</th><th>Disruption</th><th>Target</th><th>Status</th></tr>' + rows + '</table>'
-      : '<p class="hint">No disruptions injected. Inject one at the current feed time; with continuous optimization on, the optimizer reacts on the next cadence. A stand offline forces a reassignment; a handler capacity cut is logged but cannot be relieved by moving stands.</p>');
+      : '<p class="hint">No disruptions injected. Inject one at the current feed time; with continuous optimization on, the optimizer reacts on the next cadence. A stand offline forces a reassignment; a handler capacity cut delays the flights the reduced crew cannot service on time, a cost that stand reallocation cannot relieve.</p>');
 }
 
 /* ===== Phase V4.6: realized (incurred) cost ledger =====
@@ -3405,7 +3419,9 @@ function v4LedgerEvents() {
     if (stranded) ev.push({ t, eur: (f.conPax || 0) * u.connection + (f.pax || 0) * VALUE.eurReaccom, kind: 'strand', fid: f.id });
     else if (s.type === 'remote') ev.push({ t, eur: u.busTrip, kind: 'bus', fid: f.id });
   });
-  v4sim.moves.filter(m => m.phase === 'parked' || m.phase === 'boarding').forEach(m => {
+  const gateSeen = new Set();   // one gate-change charge per flight; escalations are strands, not gate moves
+  v4sim.moves.filter(m => (m.phase === 'parked' || m.phase === 'boarding') && m.to !== 'escalated').forEach(m => {
+    if (gateSeen.has(m.id)) return; gateSeen.add(m.id);
     const f = FEED.find(x => x.id === m.id);
     ev.push({ t: m.t, eur: (f ? f.pax : 150) * VALUE.eurReaccom, kind: 'gate', fid: m.id });
   });
