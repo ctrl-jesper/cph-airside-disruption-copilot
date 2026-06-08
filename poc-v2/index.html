@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPH Airside Disruption Copilot (PoC)</title>
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<style>
+  @font-face { font-family: 'CPH Airfield'; src: url('assets/fonts/CphAirfield-Positive.otf') format('opentype'); font-weight: 400 900; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-Regular.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-Italic.ttf') format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-SemiBold.ttf') format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+  @font-face { font-family: 'Open Sans'; src: url('assets/fonts/OpenSans-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+
+  :root {
+    /* Keep the bundled fonts; override the design system's font swap point */
+    --font-sans: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-display: 'CPH Airfield', var(--font-sans);
+    --font-numeric: var(--font-sans);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--c-canvas); color: var(--c-text); font-family: var(--font-sans); font-size: var(--fs-body-sm); line-height: var(--lh-body-sm); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  h1, h2 { font-family: var(--font-display); font-weight: var(--fw-regular); letter-spacing: var(--ls-tight); margin: 0; }
+
+  /* Utility bar + header (cph.dk pattern) */
+  .cph-utilitybar { background: var(--c-brand-deep); color: #fff; }
+  .util-inner { display: flex; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-6); font-size: var(--fs-body-sm); }
+  .util-brand { font-weight: var(--fw-semibold); letter-spacing: var(--ls-wide); }
+  .util-sep { color: rgba(255,255,255,0.4); }
+  .util-muted { color: rgba(255,255,255,0.78); }
+  .util-spacer { flex: 1; }
+  .clock { display: inline-flex; align-items: center; gap: var(--space-2); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; color: #fff; }
+  .clock .live { width: 8px; height: 8px; border-radius: 50%; background: var(--blue-300); box-shadow: 0 0 0 3px rgba(133,166,251,0.3); animation: cph-pulse 1.4s var(--ease-standard) infinite; }
+  @keyframes cph-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .clock .live { animation: none; } }
+  .badge { font-size: var(--fs-overline); text-transform: uppercase; letter-spacing: var(--ls-overline); color: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.25); padding: 4px 10px; border-radius: var(--radius-pill); font-weight: var(--fw-semibold); }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-6); background: var(--c-surface); border-bottom: 1px solid var(--c-border); }
+  .brand { display: flex; align-items: center; gap: var(--space-4); }
+  .logo-img { height: 40px; width: auto; display: block; }
+  .brand h1 { font-size: var(--fs-heading-lg); color: var(--c-brand); }
+  .brand p { margin: 2px 0 0; font-size: var(--fs-caption); color: var(--c-text-muted); font-family: var(--font-sans); }
+
+  .wrap { display: grid; grid-template-columns: 330px 1fr; min-height: calc(100vh - 105px); }
+  .left { background: var(--c-surface); border-right: 1px solid var(--c-border); padding: var(--space-6); }
+  .right { padding: var(--space-6) var(--space-8); max-width: var(--container-wide); }
+  .section-title { font-size: var(--fs-overline); text-transform: uppercase; letter-spacing: var(--ls-overline); color: var(--c-text-muted); margin: 0 0 var(--space-1); font-weight: var(--fw-semibold); }
+  .cap { font-size: var(--fs-caption); color: var(--c-text-muted); margin: 0 0 var(--space-4); }
+
+  .issue { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3); border-radius: var(--radius-md); margin-bottom: var(--space-2); background: var(--c-surface); border: 1px solid var(--c-border); box-shadow: var(--shadow-xs); font-size: var(--fs-caption); }
+  .issue.injected { background: var(--c-danger-surface); border-color: var(--c-danger-border); }
+  .issue .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex: none; }
+  .dot.red { background: var(--c-danger); } .dot.amber { background: var(--c-warning-accent); } .dot.muted { background: var(--gray-400); }
+  .issue b { display: block; font-size: var(--fs-body-sm); color: var(--c-text); }
+  .issue span { color: var(--c-text-muted); }
+  .countbox { background: var(--c-info-surface); border: 1px solid var(--c-info-border); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5); margin: var(--space-5) 0 var(--space-4); }
+  .countbox .n { font-family: var(--font-display); font-size: var(--fs-display-lg); color: var(--c-brand); line-height: 1; }
+  .countbox .t { font-size: var(--fs-body-sm); color: var(--c-text); margin-top: var(--space-2); }
+  .harden-btn { width: 100%; }
+
+  .titlebar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-5); }
+  .titlebar h2 { font-size: var(--fs-heading-xl); margin: 0; color: var(--c-brand); }
+  .controls { display: flex; gap: var(--space-3); }
+  button { font-family: var(--font-sans); cursor: pointer; }
+  .btn-ghost { display: inline-flex; align-items: center; gap: var(--space-2); height: 40px; padding: 0 var(--space-4); font-size: var(--fs-body-sm); font-weight: var(--fw-semibold); border-radius: var(--radius-sm); background: var(--c-surface); color: var(--c-action); border: 1px solid var(--c-border-strong); transition: background var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard); }
+  .btn-ghost:hover { border-color: var(--c-action); background: var(--blue-50); }
+  .btn-ghost.active { background: var(--c-warning-surface); border-color: var(--c-warning-border); color: var(--c-warning); }
+  .btn-ghost:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+  .tabs { display: flex; gap: var(--space-1); border-bottom: 2px solid var(--c-border); margin-bottom: var(--space-5); }
+  .tab { display: inline-flex; align-items: center; padding: var(--space-3) var(--space-4); cursor: pointer; font-size: var(--fs-heading-md); font-weight: var(--fw-semibold); color: var(--c-text-muted); border-bottom: 3px solid transparent; margin-bottom: -2px; transition: color var(--dur-fast) var(--ease-standard); }
+  .tab:hover { color: var(--c-text); }
+  .tab.active { color: var(--c-brand); border-bottom-color: var(--c-action); }
+  .tab .pill-n { background: var(--c-neutral-surface); color: var(--c-text-muted); font-size: var(--fs-caption); font-weight: var(--fw-semibold); padding: 1px 8px; border-radius: var(--radius-pill); margin-left: var(--space-2); }
+  .tab.active .pill-n { background: var(--blue-100); color: var(--c-brand); }
+  .tab .note-n { background: var(--c-danger); color: #fff; font-size: var(--fs-caption); font-weight: var(--fw-semibold); padding: 1px 8px; border-radius: var(--radius-pill); margin-left: var(--space-2); font-variant-numeric: tabular-nums; }
+  .tabpane { display: none; } .tabpane.active { display: block; }
+
+  .legend { display: none; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); margin-bottom: var(--space-5); box-shadow: var(--shadow-sm); }
+  .legend.show { display: block; }
+  .legend h3 { margin: 0 0 var(--space-3); font-size: var(--fs-heading-md); color: var(--c-brand); }
+  .legend dl { margin: 0; display: grid; grid-template-columns: 190px 1fr; gap: var(--space-2) var(--space-5); font-size: var(--fs-body-sm); }
+  .legend dt { color: var(--c-text); font-weight: var(--fw-semibold); } .legend dd { margin: 0; color: var(--c-text-muted); }
+  .legend .how { margin-top: var(--space-4); font-size: var(--fs-caption); color: var(--c-text-muted); border-top: 1px solid var(--c-border); padding-top: var(--space-3); }
+
+  .tip { position: relative; border-bottom: 1px dotted var(--c-text-subtle); cursor: help; }
+  .tip:hover::after { content: attr(data-tip); position: absolute; top: 135%; left: 0; z-index: 60; width: 250px; background: var(--c-brand-deep); color: #fff; font-weight: 400; font-size: var(--fs-caption); line-height: 1.4; padding: var(--space-3); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); text-transform: none; letter-spacing: 0; white-space: normal; }
+  .tip:hover::before { content: ""; position: absolute; top: 125%; left: 14px; z-index: 61; border: 6px solid transparent; border-bottom-color: var(--c-brand-deep); }
+
+  .qhead { display: grid; grid-template-columns: 1.6fr 1.6fr 1.5fr 0.8fr; gap: var(--space-3); font-size: var(--fs-overline); text-transform: uppercase; letter-spacing: var(--ls-overline); color: var(--c-text-muted); padding: 0 var(--space-4) var(--space-2); font-weight: var(--fw-semibold); }
+  .qhead > div:last-child { text-align: right; }
+  .qrow { display: grid; grid-template-columns: 1.6fr 1.6fr 1.5fr 0.8fr; gap: var(--space-3); align-items: center; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-2); cursor: pointer; box-shadow: var(--shadow-xs); transition: box-shadow var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
+  .qrow:hover { border-color: var(--c-action); box-shadow: var(--shadow-sm); }
+  .qflight b { font-size: var(--fs-body); color: var(--c-text); } .qflight small { color: var(--c-text-muted); display: block; font-size: var(--fs-caption); }
+  .qissue { font-size: var(--fs-body-sm); color: var(--c-text-muted); }
+  .qissue .reopen { color: var(--c-danger); font-weight: var(--fw-semibold); }
+  .act { font-size: var(--fs-caption); font-weight: var(--fw-semibold); padding: 4px var(--space-3); border-radius: var(--radius-pill); display: inline-block; }
+  .act.green { background: var(--c-success-surface); color: var(--c-success); }
+  .act.amber { background: var(--c-warning-surface); color: var(--c-warning); }
+  .act.red { background: var(--c-danger); color: #fff; }
+  .act.muted { background: var(--c-neutral-surface); color: var(--c-text-muted); }
+  .qconf { font-size: var(--fs-body-sm); font-weight: var(--fw-bold); text-align: right; }
+  .qconf.h { color: var(--c-success); } .qconf.m { color: var(--c-warning); } .qconf.l { color: var(--c-danger); } .qconf.n { color: var(--c-text-muted); }
+  .qdetail { display: none; background: var(--c-surface-alt); border: 1px solid var(--c-border); border-top: none; border-radius: 0 0 var(--radius-md) var(--radius-md); padding: var(--space-4); margin: -8px 0 var(--space-3); }
+  .qdetail.show { display: block; }
+
+  .card { background: var(--c-surface); border: 1px solid var(--c-border); border-left: 4px solid var(--c-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); box-shadow: var(--shadow-xs); }
+  .card.conf-h { border-left-color: var(--c-success); } .card.conf-m { border-left-color: var(--c-warning-accent); } .card.conf-l { border-left-color: var(--c-danger); }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-3); }
+  .card-head .stand { font-size: var(--fs-heading-md); font-weight: var(--fw-bold); color: var(--c-text); } .card-head .stand small { font-size: var(--fs-caption); color: var(--c-text-muted); font-weight: var(--fw-regular); margin-left: var(--space-2); }
+  .conf { font-size: var(--fs-overline); font-weight: var(--fw-semibold); padding: 4px var(--space-3); border-radius: var(--radius-pill); }
+  .conf.h { background: var(--c-success-surface); color: var(--c-success); } .conf.m { background: var(--c-warning-surface); color: var(--c-warning); } .conf.l { background: var(--c-danger-surface); color: var(--c-danger); }
+  .flags { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2) var(--space-5); margin-bottom: var(--space-3); }
+  .flag { font-size: var(--fs-body-sm); display: flex; gap: var(--space-2); align-items: baseline; } .flag .k { color: var(--c-text-muted); min-width: 116px; } .flag .v { font-weight: var(--fw-semibold); }
+  .flag .v.warn { background: var(--c-warning-surface); color: var(--c-warning); padding: 1px 5px; border-radius: var(--radius-xs); }
+  .flag .v.bad { color: var(--c-danger); font-weight: var(--fw-bold); }
+  .why { font-size: var(--fs-body-sm); border-top: 1px solid var(--c-border); padding-top: var(--space-2); color: var(--c-text); } .why .lbl { color: var(--c-text-muted); }
+  .score { font-size: var(--fs-caption); color: var(--c-text-subtle); margin-top: var(--space-1); font-variant-numeric: tabular-nums; }
+  .card-foot { margin-top: var(--space-3); border-top: 1px solid var(--c-border); padding-top: var(--space-3); display: flex; justify-content: flex-end; }
+  .escalate { background: var(--c-danger-surface); border: 1px solid var(--c-danger-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); }
+  .escalate h4 { margin: 0 0 var(--space-1); color: var(--c-danger); font-size: var(--fs-body); } .escalate p { margin: 0 0 var(--space-3); font-size: var(--fs-body-sm); }
+  .deprec { font-size: var(--fs-body-sm); } .deprec .row { display: flex; gap: var(--space-3); margin: var(--space-1) 0; } .deprec .k { color: var(--c-text-muted); min-width: 150px; }
+  .excluded { margin-top: var(--space-3); } .excluded .section-title { margin-bottom: var(--space-2); }
+  .excluded table { width: 100%; border-collapse: collapse; font-size: var(--fs-caption); }
+  .excluded td { padding: var(--space-2); border-bottom: 1px solid var(--c-border); } .excluded td:first-child { font-weight: var(--fw-bold); width: 70px; color: var(--c-text); } .excluded td .reason { color: var(--c-danger); }
+  .confirm { font-size: var(--fs-caption); color: var(--c-text-muted); font-style: italic; margin-top: var(--space-3); }
+  .empty { color: var(--c-text-muted); padding: var(--space-6) var(--space-1); font-size: var(--fs-body-sm); }
+
+  .mini { display: inline-flex; align-items: center; gap: var(--space-2); height: 36px; padding: 0 var(--space-4); font-size: var(--fs-body-sm); border-radius: var(--radius-sm); font-weight: var(--fw-semibold); border: 1px solid transparent; transition: background var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
+  .mini:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .mini.primary { background: var(--c-action); color: #fff; }
+  .mini.primary:hover { background: var(--c-action-hover); }
+  .mini.danger { background: var(--c-danger); color: #fff; }
+  .mini.danger:hover { background: var(--red-700); }
+  .mini.ghost { background: var(--c-surface); border-color: var(--c-border-strong); color: var(--c-action); }
+  .mini.ghost:hover { border-color: var(--c-action); background: var(--blue-50); }
+
+  table.data { width: 100%; border-collapse: collapse; font-size: var(--fs-body-sm); background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
+  table.data th, table.data td { text-align: left; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--c-border); }
+  table.data th { color: var(--c-text-muted); font-weight: var(--fw-semibold); font-size: var(--fs-overline); text-transform: uppercase; letter-spacing: var(--ls-overline); background: var(--c-surface-sunken); }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover { background: var(--c-surface-alt); }
+  table.data tr.flag-row td { background: var(--c-warning-surface); }
+  table.data b { color: var(--c-text); }
+  .t-old { color: var(--c-text-subtle); text-decoration: line-through; font-size: var(--fs-caption); }
+  .t-new { font-weight: var(--fw-bold); color: var(--c-text); font-variant-numeric: tabular-nums; }
+  .pill { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-overline); font-weight: var(--fw-semibold); letter-spacing: var(--ls-wide); padding: 3px var(--space-3); border-radius: var(--radius-pill); background: var(--c-neutral-surface); color: var(--c-text-muted); border: 1px solid transparent; }
+  .pill.pos { background: var(--c-success-surface); color: var(--c-success); border-color: var(--c-success-border); }
+  .pill.warn { background: var(--c-warning-surface); color: var(--c-warning); border-color: var(--c-warning-border); }
+  .pill.crit { background: var(--c-danger); color: #fff; }
+  .pill.clickable { cursor: pointer; } .pill.clickable:hover { filter: brightness(0.96); }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(7,18,58,0.45); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: var(--c-surface); border-radius: var(--radius-lg); width: 540px; max-width: 92vw; padding: var(--space-6); box-shadow: var(--shadow-lg); }
+  .modal h3 { margin: 0 0 var(--space-1); color: var(--c-brand); font-size: var(--fs-heading-lg); }
+  .modal .sub { color: var(--c-text-muted); font-size: var(--fs-body-sm); margin-bottom: var(--space-4); }
+  .modal .msg { background: var(--c-surface-sunken); border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: var(--space-4); font-size: var(--fs-body-sm); white-space: pre-line; color: var(--c-text); margin-bottom: var(--space-4); font-family: "SF Mono", Menlo, Consolas, monospace; }
+  .modal .actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div class="cph-utilitybar">
+  <div class="util-inner">
+    <span class="util-brand">Copenhagen Airport</span>
+    <span class="util-sep">·</span>
+    <span class="util-muted">Airside Operations</span>
+    <span class="util-sep">·</span>
+    <span class="util-muted">Decision Support</span>
+    <span class="util-spacer"></span>
+    <span class="clock"><span class="live"></span>14:20 · CPH local</span>
+    <span class="badge">Synthetic data · PoC</span>
+  </div>
+</div>
+<header>
+  <div class="brand">
+    <img class="logo-img" src="assets/img/CPH_Logo_Aeronautic_Primary_Full_RGB.png" alt="CPH">
+    <div>
+      <h1>Airside Disruption Copilot</h1>
+      <p>Real-time decision support · Airside Operations</p>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside class="left">
+    <p class="section-title">Issues affecting operations</p>
+    <p class="cap">Live picture · 14:20</p>
+    <div id="issueList"></div>
+    <div class="countbox">
+      <div class="n" id="decisionCount">0</div>
+      <div class="t">flights need a decision now</div>
+    </div>
+    <button class="btn-ghost harden-btn" id="hardenBtn" onclick="toggleSeverity()">Harden scenario</button>
+  </aside>
+
+  <main class="right">
+    <div class="titlebar">
+      <h2>Disruption decisions</h2>
+      <div class="controls">
+        <button class="btn-ghost" id="legendBtn" onclick="toggleLegend()">Legend</button>
+      </div>
+    </div>
+
+    <div class="legend" id="legend">
+      <h3>Legend and definitions</h3>
+      <dl>
+        <dt>Size code (A–F)</dt><dd>ICAO aerodrome reference code by wingspan. A stand's max code must be equal to or larger than the aircraft's. A320 is code C, B777 is E, A380 is F.</dd>
+        <dt>Contact vs remote</dt><dd>Contact stand has a jet bridge at the terminal. A remote stand sits on the apron and needs bus boarding plus extra handling.</dd>
+        <dt>Schengen / non-Schengen</dt><dd>Passport-control routing. A Schengen arrival needs a Schengen-side contact stand, or a zone change is forced.</dd>
+        <dt>Buffer</dt><dd>Minutes between this aircraft clearing the stand and the next aircraft needing it. Target is 25 minutes or more.</dd>
+        <dt>Baggage belt</dt><dd>Each stand feeds a baggage belt. Moving the aircraft can re-route bags to a different belt.</dd>
+        <dt>Ground handler</dt><dd>The company servicing the turnaround. A handler already at capacity is an operational risk.</dd>
+        <dt>Confidence</dt><dd>High, Medium, or Low, derived from the computed score and the constraints, not assigned by hand.</dd>
+        <dt>Redirect / cancel</dt><dd>The airport does not cancel an airline's flight. The tool flags candidates and recommends escalation to the airline and ATC.</dd>
+      </dl>
+      <p class="how">How it works: hard constraints filter out illegal stands; weighted soft preferences rank the rest. Assigning a stand removes it from the pool, so other flights re-rank. The duty manager decides.</p>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <div class="tab" data-tab="arr" onclick="switchTab('arr')">Arrivals<span class="note-n" id="arrPill" style="display:none">0</span></div>
+      <div class="tab" data-tab="dep" onclick="switchTab('dep')">Departures<span class="note-n" id="depPill" style="display:none">0</span></div>
+      <div class="tab active" data-tab="rec" onclick="switchTab('rec')">Recommendations<span class="pill-n" id="recPill">0</span></div>
+      <div class="tab" data-tab="chg" onclick="switchTab('chg')">Changes<span class="pill-n" id="chgPill">0</span></div>
+      <div class="tab" data-tab="std" onclick="switchTab('std')">Stands</div>
+    </div>
+
+    <div class="tabpane" id="pane-arr"></div>
+    <div class="tabpane" id="pane-dep"></div>
+    <div class="tabpane active" id="pane-rec">
+      <div class="qhead">
+        <div>Flight</div>
+        <div><span class="tip" data-tip="The disruption affecting this flight right now: a lost stand, an off-slot arrival, or a delay hitting the next turnaround.">Issue</span></div>
+        <div><span class="tip" data-tip="What the copilot proposes. Re-stand assigns a new stand; redirect or cancellation candidates are escalated to the airline and ATC; hold keeps the current plan under watch.">Recommended action</span></div>
+        <div style="text-align:right"><span class="tip" data-tip="High, Medium or Low, computed from the score and the hard constraints. Escalate or Monitor means no stand reallocation resolves it.">Confidence</span></div>
+      </div>
+      <div id="queue"></div>
+      <p class="confirm">Proposal for the duty manager — confirm manually before action. The tool advises; the human decides.</p>
+    </div>
+    <div class="tabpane" id="pane-chg"></div>
+    <div class="tabpane" id="pane-std"></div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal" id="modalBox"></div>
+</div>
+
+<script>
+const CODES = "ABCDEF";
+const BUFFER_TARGET = 25;
+
+const TIPS = {
+  walk: "Passenger walk from the stand to the central point. A longer walk worsens passenger flow and connection times.",
+  belt: "Each stand feeds a baggage belt. Moving the aircraft can re-route bags to a different belt and add handling.",
+  zone: "Passport-control routing. A Schengen arrival needs a Schengen contact stand; a remote stand forces a zone change via bus.",
+  buffer: "Minutes between this aircraft clearing the stand and the next aircraft that needs it. Target is 25 minutes or more.",
+  handler: "The company servicing the turnaround. A handler already at capacity is an operational risk.",
+  towing: "Whether the move needs towing or bus boarding, which adds time and crew.",
+  code: "ICAO aerodrome reference code A to F by wingspan. A stand's max code must be at least the aircraft's. A320 is C, B777 is E, A380 is F.",
+  contact: "Contact stand has a jet bridge at the terminal. Remote stand sits on the apron and needs bus boarding.",
+  slot: "An off-slot flight is arriving or departing outside its planned slot time, the main disruption driver.",
+  restand: "Assign the aircraft to a stand that satisfies all hard constraints, ranked by the soft trade-offs.",
+  redirect: "No legal stand exists. The airport does not cancel or divert unilaterally; this flags the flight to escalate to the airline and ATC.",
+  cancel: "Inbound aircraft unavailable and the delay is too large for a stand fix. Escalate to the airline and Network Manager; the airport does not cancel the flight.",
+  hold: "Keep the current stand and plan, but keep monitoring the delay and its knock-on to the next turnaround."
+};
+function tip(label, key) { return '<span class="tip" data-tip="' + TIPS[key] + '">' + label + '</span>'; }
+
+const baseStands = [
+  { id: "B16", pier: "B", zone: "Schengen", type: "contact", maxCode: "C", jetbridge: "ok", status: "free", availFrom: 14*60+20, nextArrival: 15*60+30, walk: 4, belt: 5, handler: "Menzies", handlerCap: "ok" },
+  { id: "A12", pier: "A", zone: "Schengen", type: "contact", maxCode: "D", jetbridge: "ok", status: "free", availFrom: 14*60+20, nextArrival: 16*60+30, walk: 9, belt: 3, handler: "Menzies", handlerCap: "ok" },
+  { id: "R6",  pier: "Remote", zone: "mixed", type: "remote", maxCode: "E", jetbridge: "none", status: "free", availFrom: 14*60+20, nextArrival: 18*60+0, walk: 12, belt: 9, handler: "Aviator", handlerCap: "at_capacity" },
+  { id: "R8",  pier: "Remote", zone: "mixed", type: "remote", maxCode: "F", jetbridge: "none", status: "free", availFrom: 14*60+20, nextArrival: 18*60+30, walk: 12, belt: 9, handler: "Aviator", handlerCap: "at_capacity" },
+  { id: "C30", pier: "C", zone: "non-Schengen", type: "contact", maxCode: "E", jetbridge: "ok", status: "occupied", availFrom: 16*60+0, nextArrival: 17*60+0, walk: 9, belt: 7, handler: "Menzies", handlerCap: "ok" },
+  { id: "C32", pier: "C", zone: "non-Schengen", type: "contact", maxCode: "E", jetbridge: "ok", status: "out_of_service", availFrom: null, nextArrival: null, walk: 10, belt: 8, handler: "Menzies", handlerCap: "ok" },
+  { id: "B10", pier: "B", zone: "Schengen", type: "contact", maxCode: "C", jetbridge: "fault", status: "free", availFrom: 14*60+20, nextArrival: 16*60+0, walk: 5, belt: 5, handler: "Menzies", handlerCap: "ok" },
+  { id: "D4",  pier: "D", zone: "Schengen", type: "contact", maxCode: "C", jetbridge: "ok", status: "out_of_service", availFrom: null, nextArrival: null, walk: 6, belt: 4, handler: "Menzies", handlerCap: "ok" },
+  { id: "E2",  pier: "B", zone: "Schengen", type: "contact", maxCode: "C", jetbridge: "ok", status: "occupied", availFrom: 15*60+20, nextArrival: 16*60+30, walk: 4, belt: 5, handler: "Menzies", handlerCap: "ok" },
+  { id: "A30", pier: "A", zone: "Schengen", type: "contact", maxCode: "C", jetbridge: "ok", status: "occupied", availFrom: 14*60+50, nextArrival: 16*60+0, walk: 8, belt: 2, handler: "Aviator", handlerCap: "at_capacity" }
+];
+
+const arrivals = [
+  { flight: "SK1425", airline: "SAS", type: "A320", code: "C", zone: "Schengen", origin: "OSL", sched: 14*60+10, est: 14*60+25, onBlock: 14*60+25, groundMin: 45, slot: "on", plannedStand: "B14", origWalk: 4, origBelt: 5, origPier: "B", needsDecision: true, issue: "Stand B14 out of service" },
+  { flight: "EK151", airline: "Emirates", type: "A388", code: "F", zone: "non-Schengen", origin: "DXB", sched: 13*60+15, est: 14*60+55, onBlock: 14*60+55, groundMin: 90, slot: "off", plannedStand: null, origWalk: null, origBelt: null, origPier: null, needsDecision: true, issue: "Off-slot, no code-F stand free" },
+  { flight: "LH2438", airline: "Lufthansa", type: "A319", code: "C", zone: "Schengen", origin: "FRA", sched: 14*60+5, est: 14*60+40, onBlock: 14*60+40, groundMin: 40, slot: "off", plannedStand: "B20", origWalk: 5, origBelt: 6, origPier: "B", needsDecision: true, issue: "Off-slot, planned stand unavailable" },
+  { flight: "SK1402", airline: "SAS", type: "A320", code: "C", zone: "Schengen", origin: "ARN", sched: 14*60+0, est: 14*60+30, onBlock: 14*60+30, groundMin: 45, slot: "off", plannedStand: "A30", origWalk: 8, origBelt: 2, origPier: "A", needsDecision: false, issue: "" },
+  { flight: "EW9011", airline: "Eurowings", type: "A320", code: "C", zone: "Schengen", origin: "DUS", sched: 14*60+15, est: 14*60+15, onBlock: 14*60+15, groundMin: 40, slot: "on", plannedStand: "B22", origWalk: 6, origBelt: 6, origPier: "B", needsDecision: false, issue: "" },
+  { flight: "AY911", airline: "Finnair", type: "A320", code: "C", zone: "Schengen", origin: "HEL", sched: 14*60+20, est: 14*60+20, onBlock: 14*60+20, groundMin: 40, slot: "on", plannedStand: "B18", origWalk: 5, origBelt: 4, origPier: "B", needsDecision: false, issue: "" },
+  { flight: "KL1129", airline: "KLM", type: "E190", code: "C", zone: "Schengen", origin: "AMS", sched: 14*60+35, est: 14*60+35, onBlock: 14*60+35, groundMin: 35, slot: "on", plannedStand: "D8", origWalk: 6, origBelt: 4, origPier: "D", needsDecision: false, issue: "" }
+];
+
+const departures = [
+  { flight: "DY1741", airline: "Norwegian", type: "B738", dest: "BGO", sched: 14*60+35, est: 15*60+15, delayMin: 40, stand: "B12", slot: "off", inboundOk: true, knockOn: true, needsDecision: true },
+  { flight: "WF402", airline: "Wideroe", type: "DH8D", dest: "AAL", sched: 14*60+25, est: 16*60+25, delayMin: 120, stand: "A8", slot: "off", inboundOk: false, knockOn: true, needsDecision: true },
+  { flight: "SK1209", airline: "SAS", type: "A320", dest: "LHR", sched: 15*60+0, est: 15*60+0, delayMin: 0, stand: "C5", slot: "on", inboundOk: true, knockOn: false, needsDecision: false },
+  { flight: "LH837", airline: "Lufthansa", type: "A320", dest: "FRA", sched: 15*60+5, est: 15*60+5, delayMin: 0, stand: "D7", slot: "on", inboundOk: true, knockOn: false, needsDecision: false }
+];
+
+let severityHard = false;
+let resolved = {};
+let pendingMap = {};
+let pendingEscalateId = null;
+
+function flightById(id) { return arrivals.find(a => a.flight === id) || departures.find(d => d.flight === id); }
+function standNow(id) { return activeStands().find(s => s.id === id); }
+function invalidInfo(fid) {
+  const r = resolved[fid];
+  if (!r || r.kind !== "assigned") return null;
+  const stand = standNow(r.standId);
+  if (!stand) return { standId: r.standId, reasons: ["Stand no longer available"] };
+  const h = checkHard(stand, flightById(fid));
+  return h.legal ? null : { standId: r.standId, reasons: h.reasons };
+}
+function isReopened(fid) { return invalidInfo(fid) !== null; }
+function arrivalOpen(a) { return (a.needsDecision && !resolved[a.flight]) || isReopened(a.flight); }
+function departureOpen(d) { return (d.needsDecision && !resolved[d.flight]) || isReopened(d.flight); }
+function committedStands() {
+  return new Set(Object.entries(resolved)
+    .filter(([fid, r]) => r.kind === "assigned" && !isReopened(fid))
+    .map(([fid, r]) => r.standId));
+}
+
+function activeStands() {
+  const stands = baseStands.map(s => Object.assign({}, s));
+  if (severityHard) {
+    const b16 = stands.find(s => s.id === "B16");
+    const a12 = stands.find(s => s.id === "A12");
+    b16.jetbridge = "fault";
+    a12.status = "occupied"; a12.availFrom = 15*60+40;
+  }
+  return stands;
+}
+function fmt(min) { const h = Math.floor(min/60), m = min%60; return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"); }
+function timeCell(sched, est) {
+  if (est !== sched) return '<span class="t-old">' + fmt(sched) + '</span><br><span class="t-new">' + fmt(est) + '</span>';
+  return '<span class="t-new">' + fmt(sched) + '</span>';
+}
+
+function checkHard(stand, flight) {
+  const reasons = [];
+  if (stand.status === "out_of_service") reasons.push("Out of service");
+  if (CODES.indexOf(flight.code) > CODES.indexOf(stand.maxCode)) reasons.push("Too small (stand max " + stand.maxCode + ", needs " + flight.code + ")");
+  if (stand.type === "contact" && stand.zone !== "mixed" && stand.zone !== flight.zone) reasons.push("Zone mismatch (" + stand.zone + ")");
+  if (stand.type === "contact" && stand.jetbridge === "fault") reasons.push("Jet bridge fault");
+  if (stand.status === "occupied" && stand.availFrom !== null && stand.availFrom > flight.onBlock) reasons.push("Occupied until " + fmt(stand.availFrom));
+  const offBlock = flight.onBlock + flight.groundMin;
+  if (stand.nextArrival !== null && stand.nextArrival < offBlock) reasons.push("Next arrival " + fmt(stand.nextArrival) + " too soon");
+  return { legal: reasons.length === 0, reasons };
+}
+function scoreStand(stand, flight) {
+  let score = 100; const parts = [];
+  if (stand.type === "remote") { score -= 25; parts.push("remote -25"); }
+  if (flight.origPier && stand.pier !== flight.origPier) { score -= 15; parts.push("pier change -15"); }
+  const sizeGap = CODES.indexOf(stand.maxCode) - CODES.indexOf(flight.code);
+  if (sizeGap > 0) { const pen = sizeGap * 5; score -= pen; parts.push("oversized stand -" + pen); }
+  const walkPen = stand.walk * 1.5; score -= walkPen; parts.push("walk -" + walkPen.toFixed(0));
+  if (flight.origBelt !== null && stand.belt !== flight.origBelt) { score -= 8; parts.push("baggage change -8"); }
+  if (stand.type === "remote") { score -= 10; parts.push("zone/bus -10"); }
+  if (stand.handlerCap === "at_capacity") { score -= 20; parts.push("handler at capacity -20"); }
+  const offBlock = flight.onBlock + flight.groundMin;
+  const buffer = stand.nextArrival !== null ? stand.nextArrival - offBlock : 999;
+  if (buffer < 10) { score -= 40; parts.push("buffer <10 -40"); }
+  else if (buffer < BUFFER_TARGET) { score -= 20; parts.push("buffer <25 -20"); }
+  return { score: Math.round(score), buffer, parts };
+}
+function confidenceClass(stand, score) {
+  if (stand.type === "contact" && score >= 70) return { cls: "h", label: "Confidence: High" };
+  if (score >= 45) return { cls: "m", label: "Confidence: Medium" };
+  return { cls: "l", label: "Confidence: Low" };
+}
+function buildFlags(stand, flight, buffer) {
+  const wd = flight.origWalk !== null ? stand.walk - flight.origWalk : null;
+  const walkTxt = stand.walk + " min" + (wd !== null && wd !== 0 ? " (" + (wd > 0 ? "+" : "") + wd + ")" : "");
+  const beltTxt = (flight.origBelt !== null && stand.belt === flight.origBelt) ? "belt " + stand.belt + " (unchanged)" : "belt " + stand.belt + (flight.origBelt !== null ? " (changed from " + flight.origBelt + ")" : "");
+  const zoneTxt = stand.type === "remote" ? "zone via bus" : stand.zone + " (match)";
+  const bufTxt = buffer >= 900 ? "no conflict" : buffer + " min" + (buffer < BUFFER_TARGET ? " (below 25 target)" : "");
+  const handlerTxt = stand.handler + (stand.handlerCap === "at_capacity" ? " (at capacity)" : " (ok)");
+  return [
+    { k: tip("Walking distance", "walk"), v: walkTxt, cls: (wd !== null && wd > 4) ? "warn" : "" },
+    { k: tip("Baggage belt", "belt"), v: beltTxt, cls: (flight.origBelt !== null && stand.belt !== flight.origBelt) ? "warn" : "" },
+    { k: tip("Zone", "zone"), v: zoneTxt, cls: stand.type === "remote" ? "warn" : "" },
+    { k: tip("Buffer", "buffer"), v: bufTxt, cls: buffer < BUFFER_TARGET ? "warn" : "" },
+    { k: tip("Ground handler", "handler"), v: handlerTxt, cls: stand.handlerCap === "at_capacity" ? "bad" : "" },
+    { k: tip("Towing", "towing"), v: stand.type === "remote" ? "yes (bus boarding)" : "no", cls: stand.type === "remote" ? "warn" : "" }
+  ];
+}
+function rationale(stand, rank, buffer) {
+  if (stand.type === "remote") {
+    const h = stand.handlerCap === "at_capacity" ? " The handler is already at capacity." : "";
+    return "Feasible on a remote stand: bus boarding and extra handling, used when no contact gate fits or is free." + h;
+  }
+  if (rank === 0) return buffer < BUFFER_TARGET ? "Least disruption: short walk, no zone change. Watch the tight buffer." : "Least disruption: short walk, no zone change, healthy buffer.";
+  return "Clean contact alternative if the buffer on the first choice is too tight.";
+}
+function allocateArrival(flight) {
+  const committed = committedStands();
+  const stands = activeStands().filter(s => !committed.has(s.id));
+  const legal = [], excluded = [];
+  stands.forEach(s => { const h = checkHard(s, flight); if (h.legal) legal.push(s); else excluded.push({ stand: s, reasons: h.reasons }); });
+  const ranked = legal.map(s => ({ stand: s, ...scoreStand(s, flight) })).sort((a, b) => b.score - a.score);
+  return { ranked, excluded };
+}
+
+function buildQueue() {
+  const items = [];
+  arrivals.filter(arrivalOpen).forEach(flight => {
+    const { ranked, excluded } = allocateArrival(flight);
+    const inv = invalidInfo(flight.flight);
+    let action, actCls, conf, confCls, tipKey;
+    if (ranked.length === 0) {
+      action = "Redirect candidate — escalate"; actCls = "red"; conf = "Escalate"; confCls = "n"; tipKey = "redirect";
+    } else {
+      const top = ranked[0];
+      const c = confidenceClass(top.stand, top.score);
+      confCls = c.cls; conf = c.label.replace("Confidence: ", "");
+      if (top.stand.type === "remote") { action = "Remote " + top.stand.id + " — review with handler"; actCls = "amber"; tipKey = "restand"; }
+      else { action = "Re-stand to " + top.stand.id; actCls = confCls === "h" ? "green" : "amber"; tipKey = "restand"; }
+    }
+    const issueOverride = inv ? ("Was " + inv.standId + ", now invalid: " + inv.reasons.join("; ")) : null;
+    items.push({ kind: "arrival", flight, ranked, excluded, action, actCls, conf, confCls, tipKey, reopened: !!inv, issueOverride });
+  });
+  departures.filter(departureOpen).forEach(flight => {
+    let action, actCls, conf, confCls, note, tipKey;
+    if (flight.delayMin >= 90 && !flight.inboundOk) {
+      action = "Cancellation candidate — escalate"; actCls = "red"; conf = "Escalate"; confCls = "n"; tipKey = "cancel";
+      note = "Inbound aircraft not available and delay exceeds 90 min. No airport stand fix resolves this. Recommend escalation to the airline and Network Manager; the airport does not cancel the flight.";
+    } else {
+      action = "Hold / monitor"; actCls = "muted"; conf = "Monitor"; confCls = "n"; tipKey = "hold";
+      note = "Delay " + flight.delayMin + " min" + (flight.knockOn ? ", knock-on to the next turnaround on stand " + flight.stand : "") + ". Hold the stand, keep monitoring; no reallocation needed yet.";
+    }
+    items.push({ kind: "departure", flight, action, actCls, conf, confCls, note, tipKey });
+  });
+  return items;
+}
+
+function renderQueue() {
+  const items = buildQueue();
+  pendingMap = {};
+  items.forEach((it, i) => { pendingMap[it.flight.flight] = i; });
+  document.getElementById("recPill").textContent = items.length;
+  document.getElementById("decisionCount").textContent = items.length;
+  const queue = document.getElementById("queue");
+  if (items.length === 0) {
+    queue.innerHTML = '<p class="empty">All decisions handled. See the Changes tab for what was assigned or escalated.</p>';
+    return;
+  }
+  queue.innerHTML = items.map((it, i) => {
+    const f = it.flight;
+    const sub = it.kind === "arrival" ? f.airline + " · " + f.type + " · " + f.zone + " arr" : f.airline + " · " + f.type + " · dep " + f.dest;
+    const baseIssue = it.kind === "arrival" ? f.issue : (f.delayMin + " min delay, stand " + f.stand);
+    const issue = it.issueOverride ? '<span class="reopen">' + it.issueOverride + '</span>' : baseIssue;
+    const actHtml = '<span class="act ' + it.actCls + ' tip" data-tip="' + TIPS[it.tipKey] + '">' + it.action + '</span>';
+    const row = '<div class="qrow" onclick="toggleDetail(' + i + ')">' +
+      '<div class="qflight"><b>' + f.flight + '</b><small>' + sub + '</small></div>' +
+      '<div class="qissue">' + issue + '</div>' +
+      '<div>' + actHtml + '</div>' +
+      '<div class="qconf ' + it.confCls + '">' + it.conf + '</div></div>';
+    return row + '<div class="qdetail" id="detail-' + i + '">' + detailHtml(it) + '</div>';
+  }).join("");
+}
+
+function detailHtml(it) {
+  const fid = it.flight.flight;
+  if (it.kind === "departure") {
+    const f = it.flight;
+    const btn = it.tipKey === "cancel"
+      ? '<button class="mini danger" onclick="openEscalate(\'' + fid + '\')">Escalate to airline &amp; Network Manager</button>'
+      : '<button class="mini ghost" onclick="acknowledge(\'' + fid + '\')">Acknowledge (hold)</button>';
+    return '<div class="deprec">' +
+      '<div class="row"><span class="k">Scheduled / estimated</span><span>' + fmt(f.sched) + ' / ' + fmt(f.est) + '</span></div>' +
+      '<div class="row"><span class="k">Delay</span><span>' + f.delayMin + ' min</span></div>' +
+      '<div class="row"><span class="k">Occupying stand</span><span>' + f.stand + '</span></div>' +
+      '<div class="row"><span class="k">Inbound aircraft</span><span>' + (f.inboundOk ? "available" : "not available") + '</span></div>' +
+      '<div class="why" style="margin-top:8px"><span class="lbl">Why:</span> ' + it.note + '</div>' +
+      '<div class="card-foot">' + btn + '</div></div>';
+  }
+  let html = "";
+  if (it.ranked.length === 0) {
+    html += '<div class="escalate"><h4>No legal stand found</h4><p>Hard constraints rule out every stand for ' + fid +
+      ' (' + it.flight.type + ', code ' + it.flight.code + ', ' + it.flight.zone + '). Recommend escalation to the airline and ATC as a redirect candidate; quantify impact before any decision.</p>' +
+      '<button class="mini danger" onclick="openEscalate(\'' + fid + '\')">Escalate to airline &amp; ATC</button></div>';
+  } else {
+    html += it.ranked.map((r, idx) => {
+      const conf = confidenceClass(r.stand, r.score);
+      const flags = buildFlags(r.stand, it.flight, r.buffer).map(fl => '<div class="flag"><span class="k">' + fl.k + '</span><span class="v ' + fl.cls + '">' + fl.v + '</span></div>').join("");
+      const tag = (idx === 0 && r.stand.type === "contact") ? " — recommended" : "";
+      return '<div class="card conf-' + conf.cls + '"><div class="card-head"><div class="stand">' + (idx + 1) + '. ' + r.stand.id +
+        '<small>' + r.stand.pier + "-pier · " + tip(r.stand.type, "contact") + " · " + tip("code " + r.stand.maxCode, "code") + tag + '</small></div><span class="conf ' + conf.cls + '">' + conf.label + '</span></div>' +
+        '<div class="flags">' + flags + '</div>' +
+        '<div class="why"><span class="lbl">Why:</span> ' + rationale(r.stand, idx, r.buffer) + '</div>' +
+        '<div class="score">Score ' + r.score + '/100 · ' + r.parts.join(" · ") + '</div>' +
+        '<div class="card-foot"><button class="mini primary" onclick="assignStand(\'' + fid + '\',\'' + r.stand.id + '\')">Assign ' + r.stand.id + '</button></div></div>';
+    }).join("");
+  }
+  if (it.excluded && it.excluded.length) {
+    html += '<div class="excluded"><p class="section-title">Excluded stands (hard constraints not met)</p><table><tbody>' +
+      it.excluded.map(e => '<tr><td>' + e.stand.id + '</td><td><span class="reason">' + e.reasons.join(" · ") + '</span></td></tr>').join("") +
+      '</tbody></table></div>';
+  }
+  return html;
+}
+function toggleDetail(i) { const el = document.getElementById("detail-" + i); if (el) el.classList.toggle("show"); }
+
+function assignStand(flightId, standId) { resolved[flightId] = { kind: "assigned", standId: standId, detail: "Re-stand to " + standId }; render(); }
+function acknowledge(flightId) { const f = flightById(flightId); resolved[flightId] = { kind: "held", detail: "Held on stand " + f.stand + ", monitoring" }; render(); }
+function openEscalate(flightId) {
+  pendingEscalateId = flightId;
+  const f = flightById(flightId);
+  const isDep = !!f.dest;
+  const type = isDep ? "cancellation" : "redirect";
+  const to = isDep ? "Airline operations (" + f.airline + ") and the Network Manager" : "Airline operations (" + f.airline + ") and ATC";
+  let msg;
+  if (isDep) {
+    msg = "To: " + to + "\n" +
+      "Re: " + f.flight + " (" + f.type + ") to " + f.dest + "\n\n" +
+      "Delay " + f.delayMin + " min with no inbound aircraft available. No stand reallocation at CPH resolves this.\n" +
+      "Recommendation: cancellation. Requesting decision and a passenger re-accommodation plan.";
+  } else {
+    msg = "To: " + to + "\n" +
+      "Re: " + f.flight + " (" + f.type + ", code " + f.code + ") inbound from " + f.origin + "\n\n" +
+      "No feasible stand available at CPH within the time window. \n" +
+      "Recommendation: redirect to an alternate or hold for a later slot. Requesting coordination on options and passenger impact.";
+  }
+  document.getElementById("modalBox").innerHTML =
+    '<h3>Escalate ' + f.flight + '</h3>' +
+    '<p class="sub">Draft message to ' + to + '. The airport recommends; it does not action ' + type + ' itself.</p>' +
+    '<div class="msg">' + msg + '</div>' +
+    '<div class="actions"><button class="mini ghost" onclick="closeModal()">Cancel</button>' +
+    '<button class="mini danger" onclick="confirmEscalate()">Send escalation</button></div>';
+  document.getElementById("modal").classList.add("show");
+}
+function confirmEscalate() {
+  const f = flightById(pendingEscalateId);
+  const isDep = !!f.dest;
+  resolved[pendingEscalateId] = { kind: "escalated", escalType: isDep ? "cancellation" : "redirect", detail: "Escalated — " + (isDep ? "cancellation" : "redirect") + " recommended" };
+  pendingEscalateId = null;
+  closeModal(); render();
+}
+function closeModal() { document.getElementById("modal").classList.remove("show"); }
+function undoChange(flightId) { delete resolved[flightId]; render(); }
+
+function goToDecision(flightId) {
+  switchTab("rec");
+  const i = pendingMap[flightId];
+  if (i === undefined) return;
+  const el = document.getElementById("detail-" + i);
+  if (el && !el.classList.contains("show")) el.classList.add("show");
+  if (el) el.scrollIntoView({ block: "center" });
+}
+
+function setNoteBadge(id, n) {
+  const el = document.getElementById(id);
+  el.textContent = n;
+  el.style.display = n > 0 ? "" : "none";
+}
+function slotChip(slot) { return slot === "on" ? '<span class="pill pos">on-slot</span>' : '<span class="pill warn">off-slot</span>'; }
+function statusCellArr(a) {
+  const r = resolved[a.flight];
+  if (isReopened(a.flight)) return '<span class="pill crit clickable" onclick="goToDecision(\'' + a.flight + '\')">re-decide</span>';
+  if (r && r.kind === "assigned") return '<span class="pill pos">assigned ' + r.standId + '</span>';
+  if (r && r.kind === "escalated") return '<span class="pill warn">escalated</span>';
+  if (a.needsDecision) return '<span class="pill crit clickable" onclick="goToDecision(\'' + a.flight + '\')">needs decision</span>';
+  return '<span class="pill pos">ok</span>';
+}
+function statusCellDep(d) {
+  const r = resolved[d.flight];
+  if (isReopened(d.flight)) return '<span class="pill crit clickable" onclick="goToDecision(\'' + d.flight + '\')">re-decide</span>';
+  if (r && r.kind === "held") return '<span class="pill pos">held</span>';
+  if (r && r.kind === "escalated") return '<span class="pill warn">escalated</span>';
+  if (d.needsDecision) return '<span class="pill crit clickable" onclick="goToDecision(\'' + d.flight + '\')">needs decision</span>';
+  return '<span class="pill pos">on schedule</span>';
+}
+function renderArrivals() {
+  document.getElementById("pane-arr").innerHTML =
+    '<table class="data"><thead><tr><th>Flight</th><th>Type</th><th>' + tip("Code", "code") + '</th><th>' + tip("Zone", "zone") + '</th><th>From</th><th>Time</th><th>' + tip("Slot", "slot") + '</th><th>Stand</th><th>Status</th></tr></thead><tbody>' +
+    arrivals.map(a => '<tr class="' + (arrivalOpen(a) ? "flag-row" : "") + '"><td><b>' + a.flight + '</b><br><small style="color:var(--muted)">' + a.airline + '</small></td><td>' + a.type + '</td><td>' + a.code + '</td><td>' + a.zone + '</td><td>' + a.origin + '</td><td>' + timeCell(a.sched, a.est) + '</td><td>' + slotChip(a.slot) + '</td><td>' + (a.plannedStand || "—") + '</td><td>' + statusCellArr(a) + '</td></tr>').join("") +
+    '</tbody></table>';
+  setNoteBadge("arrPill", arrivals.filter(arrivalOpen).length);
+}
+function renderDepartures() {
+  document.getElementById("pane-dep").innerHTML =
+    '<table class="data"><thead><tr><th>Flight</th><th>Type</th><th>To</th><th>Time</th><th>Delay</th><th>Stand</th><th>' + tip("Slot", "slot") + '</th><th>Status</th></tr></thead><tbody>' +
+    departures.map(d => '<tr class="' + (departureOpen(d) ? "flag-row" : "") + '"><td><b>' + d.flight + '</b><br><small style="color:var(--muted)">' + d.airline + '</small></td><td>' + d.type + '</td><td>' + d.dest + '</td><td>' + timeCell(d.sched, d.est) + '</td><td>' + (d.delayMin ? d.delayMin + " min" : "—") + '</td><td>' + d.stand + '</td><td>' + slotChip(d.slot) + '</td><td>' + statusCellDep(d) + '</td></tr>').join("") +
+    '</tbody></table>';
+  setNoteBadge("depPill", departures.filter(departureOpen).length);
+}
+function renderStands() {
+  const stands = activeStands();
+  const committed = committedStands();
+  const assignedBy = {};
+  Object.entries(resolved).forEach(([fid, r]) => { if (r.kind === "assigned") assignedBy[r.standId] = fid; });
+  document.getElementById("pane-std").innerHTML =
+    '<table class="data"><thead><tr><th>Stand</th><th>Pier</th><th>' + tip("Zone", "zone") + '</th><th>' + tip("Type", "contact") + '</th><th>' + tip("Max code", "code") + '</th><th>Jet bridge</th><th>Status</th><th>Free from</th><th>Next arr</th><th>Belt</th><th>Handler</th></tr></thead><tbody>' +
+    stands.map(s => {
+      let st;
+      if (committed.has(s.id)) st = '<span class="pill pos">assigned ' + assignedBy[s.id] + '</span>';
+      else if (s.status === "out_of_service") st = '<span class="pill crit">out of service</span>';
+      else if (s.status === "occupied") st = '<span class="pill warn">occupied</span>';
+      else st = '<span class="pill pos">free</span>';
+      const jb = s.jetbridge === "fault" ? '<span class="pill crit">fault</span>' : s.jetbridge;
+      const flagged = s.status === "out_of_service" || s.jetbridge === "fault";
+      return '<tr class="' + (flagged ? "flag-row" : "") + '"><td><b>' + s.id + '</b></td><td>' + s.pier + '</td><td>' + s.zone + '</td><td>' + s.type + '</td><td>' + s.maxCode + '</td><td>' + jb + '</td><td>' + st + '</td><td>' + (s.availFrom ? fmt(s.availFrom) : "—") + '</td><td>' + (s.nextArrival ? fmt(s.nextArrival) : "—") + '</td><td>' + s.belt + '</td><td>' + s.handler + (s.handlerCap === "at_capacity" ? " ⚠" : "") + '</td></tr>';
+    }).join("") +
+    '</tbody></table>';
+}
+function renderChanges() {
+  const entries = Object.entries(resolved);
+  document.getElementById("chgPill").textContent = entries.length;
+  const pane = document.getElementById("pane-chg");
+  if (entries.length === 0) {
+    pane.innerHTML = '<p class="empty">No changes yet. Assign or escalate flights in the Recommendations tab.</p>';
+    return;
+  }
+  pane.innerHTML = '<table class="data"><thead><tr><th>Flight</th><th>Change</th><th>Detail</th><th>Status</th><th></th></tr></thead><tbody>' +
+    entries.map(([fid, r]) => {
+      const f = flightById(fid);
+      const sub = f.dest ? f.airline + " · dep " + f.dest : f.airline + " · arr " + f.origin;
+      let change, statusPill, detail = r.detail;
+      const inv = invalidInfo(fid);
+      if (r.kind === "assigned" && inv) { change = "Re-stand (superseded)"; statusPill = '<span class="pill crit">re-decide</span>'; detail = r.standId + " no longer valid: " + inv.reasons.join("; "); }
+      else if (r.kind === "assigned") { change = "Re-stand"; statusPill = '<span class="pill pos">assigned</span>'; }
+      else if (r.kind === "held") { change = "Hold"; statusPill = '<span class="pill pos">monitoring</span>'; }
+      else { change = r.escalType === "cancellation" ? "Cancellation" : "Redirect"; statusPill = '<span class="pill warn">escalated</span>'; }
+      return '<tr><td><b>' + fid + '</b><br><small style="color:var(--muted)">' + sub + '</small></td><td>' + change + '</td><td>' + detail + '</td><td>' + statusPill + '</td><td style="text-align:right"><button class="mini ghost" onclick="undoChange(\'' + fid + '\')">Undo</button></td></tr>';
+    }).join("") +
+    '</tbody></table>';
+}
+function renderIssues() {
+  let issues = [
+    { dot: "red", b: "B14 out of service", s: "Central contact stand, technical fault" },
+    { dot: "red", b: "Aviator at capacity", s: "Ground handler cannot take more turnarounds" },
+    { dot: "amber", b: "Off-slot arrivals", s: "Multiple aircraft arriving outside their slots" },
+    { dot: "amber", b: "European airspace pressure", s: "Inbound flows delayed" },
+    { dot: "amber", b: "A380 needs remote stand", s: "No code-F contact gate; remote stand with bussing required" }
+  ];
+  let injectedHtml = "";
+  if (severityHard) {
+    injectedHtml = [
+      { b: "B16 jet bridge faulty", s: "Contact use lost (injected)" },
+      { b: "A12 occupied until 15:40", s: "Contact use lost (injected)" }
+    ].map(i => '<div class="issue injected"><span class="dot red"></span><div><b>' + i.b + '</b><span>' + i.s + '</span></div></div>').join("");
+  }
+  document.getElementById("issueList").innerHTML = injectedHtml + issues.map(i =>
+    '<div class="issue"><span class="dot ' + i.dot + '"></span><div><b>' + i.b + '</b><span>' + i.s + '</span></div></div>').join("");
+}
+
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+  document.querySelectorAll(".tabpane").forEach(p => p.classList.remove("active"));
+  document.getElementById("pane-" + name).classList.add("active");
+}
+function toggleLegend() {
+  const open = document.getElementById("legend").classList.toggle("show");
+  document.getElementById("legendBtn").classList.toggle("active", open);
+}
+function toggleSeverity() {
+  severityHard = !severityHard;
+  const btn = document.getElementById("hardenBtn");
+  btn.classList.toggle("active", severityHard);
+  btn.textContent = severityHard ? "Reset scenario" : "Harden scenario";
+  render();
+}
+
+function render() { renderIssues(); renderQueue(); renderArrivals(); renderDepartures(); renderStands(); renderChanges(); }
+render();
+</script>
+</body>
+</html>

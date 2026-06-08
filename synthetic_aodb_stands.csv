@@ -1,0 +1,11 @@
+stand,pier,zone,type,max_wingspan_code,mars,jetbridge,status,free_from,walk_min_to_central,baggage_belt,note
+A12,A,Schengen,contact,C,no,ok,occupied_until,15:20,5,3,
+A14,A,Schengen,contact,C,no,ok,free,now,7,3,
+B12,B,Schengen,contact,C,no,ok,occupied_until,15:05,3,5,
+B14,B,Schengen,contact,E,yes,FAULT,out_of_service,unknown,3,5,jet-bridge technical fault from 13:55
+B16,B,Schengen,contact,C,no,ok,free,now,4,5,next arrival LH882 ~15:10
+C28,C,non-Schengen,contact,E,yes,ok,free,now,9,7,
+C30,C,non-Schengen,contact,C,no,ok,occupied_until,14:40,9,7,
+R5,Remote,mixed,remote,E,no,n/a,free,now,0,bus,bus boarding
+R6,Remote,mixed,remote,C,no,n/a,free,now,0,bus,bus boarding
+R7,Remote,mixed,remote,C,no,n/a,free,now,0,bus,bus boarding

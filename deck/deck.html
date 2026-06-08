@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPH · AI Business Lead-case</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cw: 1280px; --ch: 720px; --mx: 76px; --my: 54px; --foot: 60px; --scale: 1;
+    --bg: #FFFFFF; --panel: #F8F8F8; --panel-2: #EEEEEE; --grid: #E9E9E9; --border: #DEDEDE;
+    --text: #333333; --text-muted: #868686; --text-faint: #ABABAB;
+    /* CPH brand */
+    --brand-hi: #FFC72C;   /* CPH yellow — highlight, rules, progress */
+    --brand:    #1B4B8F;   /* mid navy — bar/agenda numerals */
+    --brand-dk: #00205B;   /* deep navy — cover/closing/moment bg, big numbers */
+    --brand-lo: #C9D6EC;   /* light blue tint */
+    --blue: #0092E1; --link: #0062BC; --yellow: #FFC72C; --purple: #673AB6; --red: #9F000A;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #1c1c1c; font-family: 'Inter', -apple-system, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+  .deck { position: fixed; inset: 0; overflow: hidden; }
+  .slide { position: absolute; top: 50%; left: 50%; width: var(--cw); height: var(--ch); transform: translate(-50%, -50%) scale(var(--scale)); transform-origin: center center; background: var(--bg); display: none; overflow: hidden; }
+  .slide.active { display: block; }
+  .pad { position: absolute; inset: 0; padding: var(--my) var(--mx) var(--foot); display: flex; flex-direction: column; }
+
+  /* CPH logo: navy tile, yellow letters */
+  .logo { display: inline-flex; align-items: center; height: 30px; background: var(--brand-dk); padding: 6px 11px; }
+  .logo span { color: var(--brand-hi); font-weight: 800; font-size: 17px; letter-spacing: 0.06em; line-height: 1; }
+  .logo.on-brand { background: transparent; padding: 6px 0; }
+  .logo.on-brand span { color: var(--brand-hi); }
+  .s-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+
+  .eyebrow { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; color: var(--brand-dk); margin-bottom: 12px; text-transform: uppercase; }
+  h1 { font-size: 40px; font-weight: 800; line-height: 1.08; letter-spacing: -0.02em; color: var(--text); max-width: 24ch; }
+  .lead { font-size: 16px; line-height: 1.5; font-weight: 400; color: var(--text-muted); max-width: 94ch; margin-top: 2px; margin-bottom: 18px; }
+  .lead strong { color: var(--text); font-weight: 600; }
+  .subtitle { font-size: 17px; font-weight: 400; line-height: 1.5; color: var(--text-muted); margin-top: 14px; max-width: 58ch; }
+  .s-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+
+  .s-foot { position: absolute; left: var(--mx); right: var(--mx); bottom: 22px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-faint); letter-spacing: 0.04em; border-top: 1px solid var(--grid); padding-top: 9px; }
+  .s-foot .pagenum { font-variant-numeric: tabular-nums; }
+
+  .cover, .closing, .moment { background: var(--brand-dk); }
+  .cover .pad { padding: var(--my) var(--mx); justify-content: space-between; }
+  .cover .eyebrow, .moment .eyebrow { color: rgba(255,255,255,0.85); }
+  .cover h1 { color: #fff; font-size: 56px; line-height: 1.05; max-width: 19ch; }
+  .cover .subtitle { color: rgba(255,255,255,0.88); font-size: 19px; max-width: 52ch; }
+  .cover .cover-meta { color: rgba(255,255,255,0.92); font-size: 15px; font-weight: 500; }
+  .cover-rule { width: 64px; height: 4px; background: var(--brand-hi); margin: 0 0 22px; }
+  .closing .pad { justify-content: space-between; }
+  .closing h1 { color: #fff; font-size: 64px; }
+  .closing .close-q { color: #fff; font-size: 22px; font-weight: 400; line-height: 1.45; max-width: 46ch; margin-top: 20px; }
+  .closing .close-q .accent { color: var(--brand-hi); font-weight: 600; }
+  .closing .close-contact { color: rgba(255,255,255,0.92); font-size: 15px; font-weight: 500; }
+  .closing .close-contact .label { color: rgba(255,255,255,0.6); font-weight: 400; margin-right: 8px; }
+
+  .moment .pad { justify-content: center; }
+  .moment h1 { color: #fff; font-size: 44px; max-width: 22ch; }
+  .moment .m-body { color: rgba(255,255,255,0.9); font-size: 18px; line-height: 1.55; max-width: 76ch; margin-top: 16px; }
+  .layers { display: flex; align-items: center; gap: 10px; margin-top: 32px; }
+  .layer { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); color: #fff; font-size: 14px; font-weight: 500; padding: 12px 16px; border-radius: 8px; white-space: nowrap; }
+  .layer.now { background: var(--brand-hi); color: var(--brand-dk); border-color: var(--brand-hi); font-weight: 700; }
+  .layer-arrow { color: rgba(255,255,255,0.55); font-size: 18px; }
+
+  .chart-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; }
+  .chart-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+
+  .hbars { display: flex; flex-direction: column; gap: 9px; }
+  .hbar { display: grid; grid-template-columns: 250px 1fr 44px; align-items: center; gap: 14px; }
+  .hbar-label { font-size: 13px; color: var(--text); line-height: 1.2; }
+  .hbar-track { height: 18px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+  .hbar-fill { height: 100%; background: var(--brand); border-radius: 4px; }
+  .hbar.hi .hbar-fill { background: var(--brand-hi); }
+  .hbar-val { font-size: 13px; font-weight: 700; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+
+  .stat-card { background: var(--bg); border: 1px solid var(--border); border-top: 4px solid var(--brand-hi); border-radius: 10px; padding: 16px 18px; }
+  .stat-num { font-size: 34px; font-weight: 800; color: var(--brand-dk); letter-spacing: -0.02em; line-height: 1; }
+  .stat-desc { font-size: 12.5px; color: var(--text); line-height: 1.4; margin-top: 8px; }
+  .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+  .chart-split { display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px; align-items: stretch; }
+  .stat-rail { display: flex; flex-direction: column; gap: 12px; }
+  .stat-rail .stat-card { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+  .card-grid { display: grid; gap: 16px; }
+  .card-grid.c2 { grid-template-columns: 1fr 1fr; }
+  .card-grid.c3 { grid-template-columns: repeat(3, 1fr); }
+  .card-grid.c4 { grid-template-columns: repeat(4, 1fr); }
+  .icard { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+  .icard .ic-tag { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: var(--brand-dk); margin-bottom: 8px; }
+  .icard .ic-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .icard .ic-body { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+  .icard .ic-body b { color: var(--text); font-weight: 600; }
+  .icard.accent { border-top: 4px solid var(--brand-hi); }
+  .icard.flag .ic-tag { color: var(--blue); }
+  .note-line { font-size: 12.5px; color: var(--text-muted); margin-top: 14px; line-height: 1.45; }
+  .note-line strong { color: var(--text); font-weight: 600; }
+
+  .compare2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .c2card { border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; }
+  .c2card.is-pref { border-color: var(--brand); border-top: 4px solid var(--brand-hi); background: #F6FAFF; }
+  .c2card .c2tag { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; }
+  .c2card.is-pref .c2tag { color: var(--brand-dk); }
+  .c2card .c2title { font-size: 20px; font-weight: 800; color: var(--text); margin-bottom: 12px; }
+  .c2card .c2desc { font-size: 13px; color: var(--text-muted); line-height: 1.45; margin-bottom: 14px; }
+  .c2row { display: flex; gap: 10px; margin-top: auto; padding-top: 12px; }
+  .c2col { flex: 1; }
+  .c2col .c2k { font-size: 11px; font-weight: 600; color: var(--brand-dk); margin-bottom: 4px; }
+  .c2col.bad .c2k { color: var(--text-muted); }
+  .c2col .c2t { font-size: 12px; color: var(--text); line-height: 1.4; }
+
+  .flow { display: flex; align-items: stretch; gap: 0; width: 100%; }
+  .flow-node { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+  .flow-node.g { background: #F6FAFF; border-color: var(--brand-lo); }
+  .flow-node .fn-t { font-size: 13px; font-weight: 700; color: var(--text); }
+  .flow-node .fn-d { font-size: 11px; color: var(--text-muted); margin-top: 5px; line-height: 1.35; }
+  .flow-arrow { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 64px; padding: 0 4px; }
+  .flow-arrow .fa-lab { font-size: 10px; color: var(--brand-dk); font-weight: 600; text-align: center; margin-bottom: 3px; line-height: 1.2; }
+  .flow-arrow .fa-line { color: var(--text-faint); font-size: 18px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chip { font-size: 11.5px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; }
+  .chip.g { background: #EAF1FF; border-color: var(--brand-lo); color: var(--brand-dk); font-weight: 600; }
+
+  .two-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .panel { border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; background: var(--panel); }
+  .panel.pref { background: #F6FAFF; border-color: var(--brand-lo); }
+  .panel-h { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
+  .panel ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .panel li { font-size: 12.5px; color: var(--text-muted); line-height: 1.4; padding-left: 14px; position: relative; }
+  .panel li::before { content: ''; position: absolute; left: 0; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--brand); }
+  .panel li b { color: var(--text); font-weight: 600; }
+
+  .phases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .phase { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--panel); display: flex; flex-direction: column; }
+  .phase .ph-n { font-size: 12px; font-weight: 700; color: var(--brand-dk); margin-bottom: 6px; }
+  .phase .ph-t { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 10px; line-height: 1.2; }
+  .phase ul { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  .phase li { font-size: 11.5px; color: var(--text-muted); line-height: 1.35; padding-left: 12px; position: relative; }
+  .phase li::before { content: ''; position: absolute; left: 0; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--brand); }
+
+  .agenda-row { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 28px; padding: 15px 4px; border-top: 1px solid var(--border); }
+  .agenda-row:last-child { border-bottom: 1px solid var(--border); }
+  .agenda-num { font-size: 30px; font-weight: 800; color: var(--brand); font-variant-numeric: tabular-nums; }
+  .agenda-title { font-size: 21px; font-weight: 600; }
+  .agenda-sub { font-size: 14px; color: var(--text-muted); margin-top: 2px; }
+
+  .sources { display: flex; flex-direction: column; gap: 8px; max-width: 84ch; }
+  .source { display: grid; grid-template-columns: 36px 1fr; gap: 16px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .source .src-n { font-size: 18px; font-weight: 800; color: var(--brand); font-variant-numeric: tabular-nums; }
+  .source .src-t { font-size: 13.5px; color: var(--text); line-height: 1.4; }
+  .source .src-t b { font-weight: 700; }
+
+  .nav { position: fixed; bottom: 18px; right: 20px; display: flex; gap: 8px; z-index: 50; }
+  .nav button { width: 34px; height: 34px; border: none; border-radius: 50%; background: rgba(255,255,255,0.85); color: var(--text); font-size: 15px; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.25); }
+  .progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--brand-hi); z-index: 60; transition: width 0.25s; }
+  .counter { position: fixed; bottom: 24px; left: 22px; font-size: 12px; color: rgba(255,255,255,0.7); z-index: 50; font-variant-numeric: tabular-nums; }
+
+  @page { size: 13.333in 7.5in; margin: 0; }
+  @media print {
+    html, body { background: #fff; }
+    .deck { position: static; overflow: visible; }
+    .slide { position: relative; top: auto; left: auto; transform: none; display: block !important; page-break-after: always; break-after: page; width: 1280px; height: 720px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .slide:last-child { page-break-after: auto; }
+    .nav, .progress, .counter { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="counter" id="counter"></div>
+<div class="deck" id="deck">
+
+  <!-- 1 · COVER -->
+  <section class="slide cover active">
+    <div class="pad">
+      <div class="s-head"><div class="logo on-brand"><span>CPH</span></div></div>
+      <div>
+        <div class="cover-rule"></div>
+        <div class="eyebrow">Case-præsentation · AI Business Lead, Operations</div>
+        <h1>Styrk vagtlederen. Automatisér ikke beslutningen.</h1>
+        <p class="subtitle">En afgrænset, forklarbar AI-assistent til standplads-omallokering, der kan testes på uger og virke i drift.</p>
+      </div>
+      <div class="cover-meta">Jesper Mathias Nielsen &nbsp;·&nbsp; 12. juni 2026</div>
+    </div>
+  </section>
+
+  <!-- 2 · AGENDA -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">Agenda</div>
+      <h1>Fem spørgsmål, ét svar der virker.</h1>
+      <div class="s-body">
+        <div style="display:flex;flex-direction:column;">
+          <div class="agenda-row"><div class="agenda-num">01</div><div><div class="agenda-title">Problemforståelse</div><div class="agenda-sub">Hvad er den egentlige flaskehals</div></div></div>
+          <div class="agenda-row"><div class="agenda-num">02</div><div><div class="agenda-title">Løsningsidé</div><div class="agenda-sub">Airside Disruption Copilot, fra forstyrrelse til rangerede valg</div></div></div>
+          <div class="agenda-row"><div class="agenda-num">03</div><div><div class="agenda-title">PoC vs full scale</div><div class="agenda-sub">Hvad jeg selv bygger, hvor jeg involverer andre</div></div></div>
+          <div class="agenda-row"><div class="agenda-num">04</div><div><div class="agenda-title">Governance, compliance og drift</div><div class="agenda-sub">Den hurtige, ansvarlige vej til drift</div></div></div>
+          <div class="agenda-row"><div class="agenda-num">05</div><div><div class="agenda-title">Business value og de første 90 dage</div><div class="agenda-sub">Hvor værdien ligger, og hvordan jeg starter</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 3 · PROBLEMFORSTÅELSE -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">01 · Problemforståelse</div>
+      <h1>Flaskehalsen er ikke regnekraft. Det er beslutninger under pres.</h1>
+      <p class="lead">Den optimale løsning ét sted skaber problemer et andet. I dag træffes afgørelsen manuelt under tidspres, og viden er <strong>i høj grad personbåren</strong>, uden fælles overblik over afhængighederne.</p>
+      <div class="s-body">
+        <div class="two-panel">
+          <div class="panel">
+            <div class="panel-h">Det ligner et optimeringsproblem</div>
+            <ul>
+              <li>Find den matematisk bedste fordeling af fly på standpladser.</li>
+              <li>Fristelsen: byg en motor, der løser hele kabalen automatisk.</li>
+              <li>Risiko: integration, sikkerhed og en lang vej, før noget virker.</li>
+            </ul>
+          </div>
+          <div class="panel pref">
+            <div class="panel-h">Det er reelt en hurtig, robust beslutning</div>
+            <ul>
+              <li>Én god afgørelse på tværs af <b>Schengen, bagage, gates og handling</b>.</li>
+              <li>Konsekvenserne er ikke tydelige med det samme.</li>
+              <li>Den dygtige vagtleder ved hvordan. Den viden er sårbar og udelt.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="note-line"><strong>Status quo koster:</strong> nøgleperson-afhængighed, ujævne beslutninger og intet revisionsspor at lære af.</div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 4 · MOMENT (reframe) -->
+  <section class="slide moment">
+    <div class="pad">
+      <div class="s-head"><div class="logo on-brand"><span>CPH</span></div></div>
+      <div class="s-body" style="justify-content:center;">
+        <div class="cover-rule"></div>
+        <div class="eyebrow">Princippet</div>
+        <h1>AI skal give vagtlederen bedre valg på 30 sekunder. Ikke fjerne valget.</h1>
+        <p class="m-body">Beslutningsstøtte med mennesket i loopet er hurtigere at bygge, lettere at stole på, og holder os i en lav risikoklasse under EU AI Act. Det er den pragmatiske vej til værdi i en sikkerhedskritisk drift.</p>
+        <div class="layers">
+          <div class="layer">Data fra Airhart</div><div class="layer-arrow">&rsaquo;</div>
+          <div class="layer">Rangerede forslag</div><div class="layer-arrow">&rsaquo;</div>
+          <div class="layer now">Vagtlederen beslutter</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · LØSNINGSIDÉ: beslutningsstøtte vs automatisering -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">02 · Løsningsidé</div>
+      <h1>Vælg én afgrænset beslutning med høj frekvens og høj smerte.</h1>
+      <p class="lead">Jeg koger ikke havet. Jeg starter ét sted: <strong>standplads-omallokering når en stand falder ud</strong> eller fly lander uden for slot. Beslutningsstøtte først, ikke automatisering.</p>
+      <div class="s-body">
+        <div class="compare2">
+          <div class="c2card is-pref">
+            <div class="c2tag">Det jeg foreslår</div>
+            <div class="c2title">Beslutningsstøtte, menneske i loopet</div>
+            <div class="c2desc">Assistenten foreslår rangerede muligheder med begrundelse. Vagtlederen beslutter og udfører.</div>
+            <div class="c2row">
+              <div class="c2col"><div class="c2k">Fordel</div><div class="c2t">Hurtig at bygge, forklarbar, lav risiko, høj tillid.</div></div>
+              <div class="c2col bad"><div class="c2k">Pris</div><div class="c2t">Beslutter ikke selv. Det er med vilje.</div></div>
+            </div>
+          </div>
+          <div class="c2card">
+            <div class="c2tag">Fristelsen</div>
+            <div class="c2title">Fuld automatisering</div>
+            <div class="c2desc">En motor der reallokerer optimalt og skriver tilbage til driftssystemerne.</div>
+            <div class="c2row">
+              <div class="c2col"><div class="c2k">Fordel</div><div class="c2t">Teoretisk optimal fordeling.</div></div>
+              <div class="c2col bad"><div class="c2k">Pris</div><div class="c2t">Integration, sikkerhed, høj-risiko klasse, lang vej til drift.</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 6 · LØSNINGEN: flow -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">02 · Løsningsidé</div>
+      <h1>Airside Disruption Copilot: fra forstyrrelse til rangerede valg.</h1>
+      <p class="lead">Når en stand falder ud, læser assistenten aktuel tilstand fra <strong>Airhart (read-only)</strong>, anvender hårde krav plus vagtledernes tavse regler, og foreslår rangerede muligheder med konsekvenser og begrundelse.</p>
+      <div class="s-body">
+        <div class="flow">
+          <div class="flow-node g"><div class="fn-t">Airhart AODB</div><div class="fn-d">Read-only udtræk: stande, fly, status, slots.</div></div>
+          <div class="flow-arrow"><div class="fa-lab">hårde krav</div><div class="fa-line">&rarr;</div></div>
+          <div class="flow-node g"><div class="fn-t">Krav + tavse regler</div><div class="fn-d">Wingspan, zone, jetbridge, buffer, handler-kapacitet.</div></div>
+          <div class="flow-arrow"><div class="fa-lab">ranger</div><div class="fa-line">&rarr;</div></div>
+          <div class="flow-node g"><div class="fn-t">Top 3 forslag</div><div class="fn-d">Konsekvenser, begrundelse og tillidsniveau.</div></div>
+          <div class="flow-arrow"><div class="fa-lab">beslut</div><div class="fa-line">&rarr;</div></div>
+          <div class="flow-node"><div class="fn-t">Vagtleder beslutter</div><div class="fn-d">Mennesket udfører. Valget logges.</div></div>
+        </div>
+        <div class="chips">
+          <span class="chip g">Read-only i PoC</span>
+          <span class="chip g">Forklarbar</span>
+          <span class="chip">Logger beslutninger til revisionsspor</span>
+          <span class="chip">Degraded mode → manuel triage</span>
+        </div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 7 · PROTOTYPE mock screen -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">02 · Løsningsidé · Prototype</div>
+      <h1>Sådan ser et svar ud i praksis.</h1>
+      <p class="lead">Bygget i Copilot Studio på et syntetisk AODB-udtræk. Vagtlederen spørger: <strong>"B16 er ude af drift, hvor flytter jeg SK456 hen?"</strong></p>
+      <div class="s-body">
+        <div class="card-grid c3">
+          <div class="icard accent">
+            <div class="ic-tag">1 · ANBEFALET · TILLID HØJ</div>
+            <div class="ic-title">Stand B14</div>
+            <div class="ic-body">Samme pier B, Schengen, A320 passer. Gang <b>4 min</b>, bagagebånd 5 uændret. Buffer til LH882 ca. 20 min, hold øje. <b>Mindst forstyrrelse, intet zoneskift.</b></div>
+          </div>
+          <div class="icard">
+            <div class="ic-tag">2 · TILLID MIDDEL</div>
+            <div class="ic-title">Stand A14</div>
+            <div class="ic-body">Schengen, contact, kode C passer. Gang <b>+3 min</b>, bagage omdirigeres til bånd 3. Ingen towing. <b>Ren contact-løsning hvis B14-buffer er for tæt.</b></div>
+          </div>
+          <div class="icard">
+            <div class="ic-tag">3 · TILLID LAV</div>
+            <div class="ic-title">Stand R6 (remote)</div>
+            <div class="ic-body">Altid ledig, kode C passer. Bus-boarding <b>+12 min</b>, +1 handler-crew, vejreksponering. <b>Kun hvis contact-standpladser udtømmes.</b></div>
+          </div>
+        </div>
+        <div class="note-line"><strong>Forslag til vagtlederen, bekræft manuelt før handling.</strong> Illustrativ prototype på syntetiske data, ikke CPH-drift.</div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 8 · POC VS FULL SCALE -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">03 · PoC vs full scale</div>
+      <h1>Hvad jeg selv bygger på uger. Hvad jeg forankrer hos udviklerne.</h1>
+      <p class="lead">Jeg driver den tidlige fase selv og involverer specialister, når set-up'et vokser. <strong>Modellen er ikke systemet.</strong></p>
+      <div class="s-body">
+        <div class="two-panel">
+          <div class="panel pref">
+            <div class="panel-h">Jeg bygger selv · 3 til 4 uger</div>
+            <ul>
+              <li>Copilot Studio og Power Platform på et <b>kurateret, syntetisk AODB-udtræk</b>.</li>
+              <li>Krav og tavse regler kodet ind med <b>2 til 3 vagtledere</b>.</li>
+              <li>Rangerede forslag i en Teams-flade vagtlederne kan reagere på.</li>
+              <li>Validering: <b>back-test mod historiske forstyrrelsesdage</b>.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <div class="panel-h">Jeg involverer specialister</div>
+            <ul>
+              <li><b>AI engineers</b>: rigtig constraint solver og impact-model.</li>
+              <li><b>Data Engineers + Airhart system owner</b>: governed live-integration.</li>
+              <li><b>Data Governance</b>: klassifikation og PII.</li>
+              <li><b>Operations-ledelse</b>: sponsorat, regelvalidering, metrics.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="note-line"><strong>Gate med vetoret før vi skalerer:</strong> data owner, så operations owner, så ops og risk. Den, der kan sige nej, afgør, ikke den med flest slides.</div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 9 · GOVERNANCE -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">04 · Governance, compliance & drift</div>
+      <h1>Rådgivende design holder os i den lave risikoklasse.</h1>
+      <p class="lead">En read-only, rådgivende standallokator er <strong>sandsynligvis begrænset risiko, ikke Annex III høj risiko</strong>. Den er ikke en sikkerhedskomponent i kritisk infrastruktur, selvom lufthavnen er det. Tærsklen til høj risiko er autonomi.</p>
+      <div class="s-body">
+        <div class="card-grid c2">
+          <div class="icard accent"><div class="ic-tag">KLASSIFICERING</div><div class="ic-title">Begrænset risiko, ikke Annex III</div><div class="ic-body">Systemet foreslår og forklarer, et menneske beslutter og bekræfter. Beslutningsstøtte, ikke en automatiseret sikkerhedsfunktion, så uden for Annex III høj risiko.</div></div>
+          <div class="icard accent"><div class="ic-tag">TÆRSKLEN</div><div class="ic-title">Autonomi udløser høj risiko</div><div class="ic-body">Write-back til Airhart eller automatisk aflysning ville gøre det til en sikkerhedskomponent. Art. 14 menneskelig kontrol, disregard, override, reverse, stop, er designgrænsen.</div></div>
+          <div class="icard accent"><div class="ic-tag">TRANSPARENS & GPAI</div><div class="ic-title">Pligterne fordelt rigtigt</div><div class="ic-body">Art. 50 transparens på samtalelaget. GPAI-forpligtelser ligger hos Microsoft som udbyder, ikke hos CPH som idriftsætter.</div></div>
+          <div class="icard accent"><div class="ic-tag">BINDENDE I PRAKSIS</div><div class="ic-title">GDPR og medbestemmelse</div><div class="ic-body">Passager- og transferdata er persondata under GDPR. Et system der ændrer arbejdsgange kræver inddragelse af samarbejdsudvalget, tidligt.</div></div>
+        </div>
+        <div class="note-line"><strong>Drift:</strong> i CPH's egen Microsoft-tenant (Copilot Studio, Azure) med audit-log som standard. Art. 14-kontrollerne anvendes frivilligt, og defineret degraded mode falder tilbage til manuel triage under tillidstærsklen.</div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 10 · BUSINESS VALUE -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">05 · Business value</div>
+      <h1>Færre afledte forsinkelser, fastholdt viden, et revisionsspor.</h1>
+      <p class="lead">Hurtigere og mere ensartede beslutninger beskytter on-time performance og standkapacitet. Tallene nedenfor er <strong>referencer og antagelser</strong>, ikke CPH-data.</p>
+      <div class="s-body">
+        <div class="chart-split">
+          <div class="card-grid c3" style="align-content:center;">
+            <div class="icard"><div class="ic-tag">DRIFT</div><div class="ic-title">Færre afledte forsinkelser</div><div class="ic-body">Hurtigere, mere ensartede valg under pres begrænser knock-on på næste turnaround.</div></div>
+            <div class="icard"><div class="ic-tag">VIDEN</div><div class="ic-title">Tavs viden gjort eksplicit</div><div class="ic-body">Mindre nøgleperson-afhængighed og hurtigere oplæring af nye vagtledere.</div></div>
+            <div class="icard"><div class="ic-tag">KONTROL</div><div class="ic-title">Revisionsspor</div><div class="ic-body">Hver beslutning logges. Forsvarligt og grundlag for løbende forbedring.</div></div>
+          </div>
+          <div class="stat-rail">
+            <div class="stat-card"><div class="stat-num">25%</div><div class="stat-desc">færre last-minute gate-skift</div><div class="stat-sub">Schiphol Deep Turnaround, produktionssystem</div></div>
+            <div class="stat-card"><div class="stat-num">~1 pp</div><div class="stat-desc">bedre on-time performance</div><div class="stat-sub">samme reference</div></div>
+            <div class="stat-card"><div class="stat-num">~100 €</div><div class="stat-desc">pr. taktisk forsinkelsesminut</div><div class="stat-sub">EUROCONTROL, branchereference</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 11 · 90 DAGE -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">05 · De første 90 dage</div>
+      <h1>Fra forstyrrelse til forankret værdi på et kvartal.</h1>
+      <p class="lead">En realistisk vej, hvor hver fase har et klart go eller stop.</p>
+      <div class="s-body">
+        <div class="phases">
+          <div class="phase"><div class="ph-n">UGE 1 til 2</div><div class="ph-t">Forstå driften</div><ul><li>Sid med vagtledere i Airside Ops.</li><li>Kortlæg den ene beslutning.</li><li>Sikr Operations-sponsorat.</li></ul></div>
+          <div class="phase"><div class="ph-n">UGE 3 til 6</div><div class="ph-t">Byg PoC</div><ul><li>Copilot Studio på syntetisk udtræk.</li><li>Kod tavse regler ind.</li><li>Back-test mod historiske dage.</li></ul></div>
+          <div class="phase"><div class="ph-n">UGE 7 til 10</div><div class="ph-t">Validér</div><ul><li>Gate med vetoret.</li><li>Go eller no-go på data.</li><li>Risk owner med inde over.</li></ul></div>
+          <div class="phase"><div class="ph-n">UGE 11 til 13</div><div class="ph-t">Forankr</div><ul><li>Kravspec til AI engineers.</li><li>Live-integration, eller</li><li>stop og vælg næste use case.</li></ul></div>
+        </div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 12 · CLOSING -->
+  <section class="slide closing">
+    <div class="pad">
+      <div class="s-head"><div class="logo on-brand"><span>CPH</span></div></div>
+      <div>
+        <h1>Tak.</h1>
+        <p class="close-q">Den hurtigste vej til AI-værdi i Operations er ikke den smarteste model. Det er den <span class="accent">beslutning, vagtlederen faktisk tør bruge.</span></p>
+      </div>
+      <div class="close-contact"><span class="label">Jesper Mathias Nielsen</span>Bygget regulerede platforme fra PoC til drift under tung governance. Præcis den spænding, rollen lever i.</div>
+    </div>
+  </section>
+
+  <!-- 13 · BILAG: governance-stillads -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">Bilag · Governance-stilladset</div>
+      <h1>Det, der bærer PoC sikkert over i drift.</h1>
+      <p class="lead">Stilladset jeg ville kræve dokumenteret, før vi skalerer. Fra min egen ramme for, hvordan lufthavnsoperatører bør indføre AI.</p>
+      <div class="s-body">
+        <div class="two-panel">
+          <div class="panel">
+            <div class="panel-h">Syv specifikationsartefakter</div>
+            <ul>
+              <li>Model Card og Datasheet (formål, fejltyper, datagrundlag).</li>
+              <li>Datakvalitetstærskler (ISO/IEC 5259).</li>
+              <li>Evalueringsplan på uafhængigt holdout-datasæt.</li>
+              <li>Risikovurdering (NIST AI RMF, AI Act Art. 9).</li>
+              <li>Design for menneskelig kontrol (Art. 14) og operationel runbook.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <div class="panel-h">Ni arkitekturprincipper</div>
+            <ul>
+              <li>Adskilte miljøer, model registry, feature store.</li>
+              <li>Drift-monitorering med automatiske retræningstriggere.</li>
+              <li>Menneskelig kontrol som førsteklasses komponent.</li>
+              <li>Uforanderlige audit-logs af input, output og overrides.</li>
+              <li>Dokumenteret fall-back og degraded mode før drift.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 14 · BILAG: kilder -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">Bilag · Kilder</div>
+      <h1>Kilder og referencer.</h1>
+      <div class="s-body">
+        <div class="sources">
+          <div class="source"><div class="src-n">01</div><div class="src-t"><b>EU AI Act</b>, Forordning 2024/1689, Annex III samt Art. 9 og 14.</div></div>
+          <div class="source"><div class="src-n">02</div><div class="src-t"><b>EASA</b>, Commission Regulation 139/2014 om aerodrome-certificering.</div></div>
+          <div class="source"><div class="src-n">03</div><div class="src-t"><b>NIST AI RMF 1.0</b> og <b>ISO/IEC 42001:2023</b> for AI-risikostyring.</div></div>
+          <div class="source"><div class="src-n">04</div><div class="src-t"><b>Royal Schiphol Group</b>, Deep Turnaround, produktionssystem på 52+ standpladser.</div></div>
+          <div class="source"><div class="src-n">05</div><div class="src-t"><b>EUROCONTROL</b>, standardreference for omkostning pr. forsinkelsesminut.</div></div>
+        </div>
+        <div class="note-line">Egne artikler om udvælgelse og arkitektur af AI i lufthavnsdrift ligger til grund for governance-rammen.</div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 15 · BILAG: antagelser -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">Bilag · Antagelser</div>
+      <h1>Hvad jeg har antaget.</h1>
+      <p class="lead">Casen inviterer til antagelser. Disse er mine.</p>
+      <div class="s-body">
+        <div class="card-grid c3">
+          <div class="icard"><div class="ic-tag">DATA</div><div class="ic-title">Syntetisk AODB-udtræk</div><div class="ic-body">Stand- og flydata er konstrueret til demo. Airhart antages at kunne levere et read-only udtræk af stande, fly, status og slots.</div></div>
+          <div class="icard"><div class="ic-tag">SCENARIE</div><div class="ic-title">Én stand ude af drift</div><div class="ic-body">Fokus på B16-udfald og knock-on. EK151 (A380, kode F) kan kun tage R8. Schengen-fly flyttes til Schengen-pier for paskontrol.</div></div>
+          <div class="icard"><div class="ic-tag">TAL</div><div class="ic-title">Referencer, ikke CPH-tal</div><div class="ic-body">Værdital er branchereferencer (Schiphol, EUROCONTROL), brugt konservativt som størrelsesorden.</div></div>
+          <div class="icard"><div class="ic-tag">CREW</div><div class="ic-title">Crew ikke modelleret</div><div class="ic-body">Motoren dækker stande, størrelse og zone, handler-kapacitet, paskontrol, bagage og transfers, men ikke crew-tilgængelighed. Et fuldt system tilføjer crew som ressource.</div></div>
+          <div class="icard"><div class="ic-tag">TRADE-OFFS</div><div class="ic-title">Pareto-hjørner ikke kalibreret</div><div class="ic-body">De tre strategier er ægte ikke-dominerede løsninger, men afstanden mellem hjørnerne er ikke finjusteret. Soft costs er dimensionsløse point, ikke kalibreret forretningsværdi.</div></div>
+          <div class="icard"><div class="ic-tag">SCOPE</div><div class="ic-title">Beslutningsstøtte, ikke automatik</div><div class="ic-body">PoC er rådgivende og read-only. Solver, towing, usikkerhedshåndtering, live-integration og write-back er full-scale.</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+  <!-- 16 · BILAG: solver vs regelmotor -->
+  <section class="slide">
+    <div class="pad">
+      <div class="s-head"><div class="logo"><span>CPH</span></div></div>
+      <div class="eyebrow">Bilag · Full-scale</div>
+      <h1>Hvorfor en solver, ikke en regelmotor.</h1>
+      <p class="lead">Gængse AODB-allokatorer omfordeler på statiske regler. Full-scale-bygget fremlægger selve afvejningen og fremskriver kaskaden, en regelmotor ikke kan se.</p>
+      <div class="s-body">
+        <div class="two-panel">
+          <div class="panel pref">
+            <div class="panel-h">Det en regelmotor ikke kan</div>
+            <ul>
+              <li>Fremlægger Pareto-afvejningen mellem passager, handler og schedule i stedet for ét skjult svar.</li>
+              <li>Fremskriver kaskaden i en digital tvilling: paskø, bagage, handler-træk og transfers under risiko.</li>
+              <li>Towing til remote frigør en contact-stand midt i standtiden, afvejet mod tug- og bus-kapacitet.</li>
+              <li>Usikkerhedsbevidst buffer plus Monte Carlo-robusthed: planen holder i X% af scenarier.</li>
+              <li>Bottom-up værdital mod en first-come-first-served baseline.</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <div class="panel-h">NP-hårdhed og skala</div>
+            <ul>
+              <li>Standallokering er bevist NP-hård.</li>
+              <li>Det bider ved fuld dags-skala, hvor håndlavede heuristikker degraderer.</li>
+              <li>Demoen kører et lille, læsbart instans, løst til optimalitet på millisekunder.</li>
+              <li>Produktion løser mod et tidsbudget, ikke bevist optimalitet.</li>
+              <li>Rullende re-optimering re-løser fra det fastlagte billede uden at thrashe committede stande.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="note-line"><strong>Pointen:</strong> motoren regner, sproglaget forklarer, mennesket beslutter. Værdien er ikke automatisering, men bedre valg under pres med konsekvenserne synlige før beslutningen.</div>
+      </div>
+    </div>
+    <div class="s-foot"><span>Jesper Mathias Nielsen &nbsp;·&nbsp; AI Business Lead-case</span><span class="pagenum"></span></div>
+  </section>
+
+</div>
+
+<div class="nav"><button id="prev" aria-label="Forrige">&lsaquo;</button><button id="next" aria-label="Næste">&rsaquo;</button></div>
+
+<script>
+  function el(id){ return document.getElementById(id); }
+  function fit(){ var s=Math.min(window.innerWidth/1280, window.innerHeight/720); document.documentElement.style.setProperty('--scale', s); }
+  window.addEventListener('resize', fit); fit();
+
+  var slides = document.querySelectorAll('.slide');
+  var counter = el('counter'), progress = el('progress');
+  var current = 0;
+  function show(i){
+    slides.forEach(function(s){ s.classList.remove('active'); });
+    slides[i].classList.add('active');
+    counter.textContent = (i+1)+' / '+slides.length;
+    progress.style.width = ((i+1)/slides.length*100)+'%';
+    var pn = slides[i].querySelector('.pagenum'); if(pn) pn.textContent = String(i+1).padStart(2,'0')+' / '+String(slides.length).padStart(2,'0');
+    current = i;
+  }
+  function next(){ if(current<slides.length-1) show(current+1); }
+  function prev(){ if(current>0) show(current-1); }
+  el('next').addEventListener('click', next); el('prev').addEventListener('click', prev);
+  function fromHash(){ var n=parseInt((location.hash||'').replace('#',''),10); if(!isNaN(n)&&n>=1&&n<=slides.length) show(n-1); }
+  window.addEventListener('hashchange', fromHash);
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){ e.preventDefault(); next(); }
+    if(e.key==='ArrowLeft'||e.key==='PageUp'){ e.preventDefault(); prev(); }
+    if(e.key==='Home') show(0);
+    if(e.key==='End') show(slides.length-1);
+    if(e.key==='p'||e.key==='P'){ e.preventDefault(); window.print(); }
+  });
+  show(0); fromHash();
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "purpose": "Synthetic AODB snapshot for the Airside Disruption Copilot PoC. Constructed for case demonstration only. Not real CPH operational data. Mirrors the fields an AODB (Airhart) would expose for a stand-reallocation decision.",
+    "snapshot_time": "2026-06-12T14:00:00+02:00",
+    "scenario": "Central contact stand B14 taken out of service at 13:55 due to a jet-bridge technical fault. The inbound assigned to B14 (SK456) is 5 minutes out. Several aircraft are arriving off-slot and a ground handler reports it cannot cover all simultaneous turnarounds. Airside Operations must reallocate stands.",
+    "disclaimer": "Stand numbers, flight numbers, and timings are illustrative."
+  },
+  "stands": [
+    {"stand": "A12", "pier": "A", "zone": "Schengen", "type": "contact", "max_wingspan_code": "C", "mars": false, "jetbridge": "ok", "status": "occupied_until", "free_from": "15:20", "walk_min_to_central": 5, "baggage_belt": 3},
+    {"stand": "A14", "pier": "A", "zone": "Schengen", "type": "contact", "max_wingspan_code": "C", "mars": false, "jetbridge": "ok", "status": "free", "free_from": "now", "walk_min_to_central": 7, "baggage_belt": 3},
+    {"stand": "B12", "pier": "B", "zone": "Schengen", "type": "contact", "max_wingspan_code": "C", "mars": false, "jetbridge": "ok", "status": "occupied_until", "free_from": "15:05", "walk_min_to_central": 3, "baggage_belt": 5},
+    {"stand": "B14", "pier": "B", "zone": "Schengen", "type": "contact", "max_wingspan_code": "E", "mars": true, "jetbridge": "FAULT", "status": "out_of_service", "free_from": "unknown", "walk_min_to_central": 3, "baggage_belt": 5},
+    {"stand": "B16", "pier": "B", "zone": "Schengen", "type": "contact", "max_wingspan_code": "C", "mars": false, "jetbridge": "ok", "status": "free", "free_from": "now", "next_arrival": "LH882 15:10", "walk_min_to_central": 4, "baggage_belt": 5},
+    {"stand": "C28", "pier": "C", "zone": "non-Schengen", "type": "contact", "max_wingspan_code": "E", "mars": true, "jetbridge": "ok", "status": "free", "free_from": "now", "walk_min_to_central": 9, "baggage_belt": 7},
+    {"stand": "C30", "pier": "C", "zone": "non-Schengen", "type": "contact", "max_wingspan_code": "C", "mars": false, "jetbridge": "ok", "status": "occupied_until", "free_from": "14:40", "walk_min_to_central": 9, "baggage_belt": 7},
+    {"stand": "R5", "pier": "Remote", "zone": "mixed", "type": "remote", "max_wingspan_code": "E", "mars": false, "jetbridge": "n/a", "status": "free", "free_from": "now", "walk_min_to_central": 0, "baggage_belt": "bus"},
+    {"stand": "R6", "pier": "Remote", "zone": "mixed", "type": "remote", "max_wingspan_code": "C", "mars": false, "jetbridge": "n/a", "status": "free", "free_from": "now", "walk_min_to_central": 0, "baggage_belt": "bus"},
+    {"stand": "R7", "pier": "Remote", "zone": "mixed", "type": "remote", "max_wingspan_code": "C", "mars": false, "jetbridge": "n/a", "status": "free", "free_from": "now", "walk_min_to_central": 0, "baggage_belt": "bus"}
+  ],
+  "flights": [
+    {"flight": "SK456", "airline": "SAS", "aircraft": "A320", "wingspan_code": "C", "origin": "OSL", "zone": "Schengen", "movement": "arrival", "sched_on_block": "14:05", "est_on_block": "14:05", "assigned_stand": "B14", "status": "displaced_by_outage", "pax": 168, "connecting_pax": 47, "next_rotation": "SK457 OSL 15:05", "ground_handler": "CPH Ground"},
+    {"flight": "LH882", "airline": "Lufthansa", "aircraft": "A320neo", "wingspan_code": "C", "origin": "FRA", "zone": "Schengen", "movement": "arrival", "sched_on_block": "14:55", "est_on_block": "15:10", "assigned_stand": "B16", "status": "delayed_off_slot", "pax": 174, "connecting_pax": 60, "ground_handler": "Aviator"},
+    {"flight": "EK151", "airline": "Emirates", "aircraft": "B777", "wingspan_code": "E", "origin": "DXB", "zone": "non-Schengen", "movement": "arrival", "sched_on_block": "14:20", "est_on_block": "14:35", "assigned_stand": "C28", "status": "off_slot", "pax": 354, "connecting_pax": 120, "ground_handler": "CPH Ground"},
+    {"flight": "SK1429", "airline": "SAS", "aircraft": "A321", "wingspan_code": "C", "origin": "LHR", "zone": "non-Schengen", "movement": "arrival", "sched_on_block": "14:30", "est_on_block": "14:30", "assigned_stand": "C30", "status": "stand_occupied_conflict", "pax": 198, "connecting_pax": 70, "ground_handler": "CPH Ground"}
+  ],
+  "ground_handlers": [
+    {"name": "CPH Ground", "concurrent_turnaround_capacity": 6, "active_now": 6, "status": "at_capacity"},
+    {"name": "Aviator", "concurrent_turnaround_capacity": 4, "active_now": 3, "status": "ok"}
+  ],
+  "rules_reference": {
+    "hard_constraints": [
+      "Aircraft wingspan code must be <= stand max_wingspan_code.",
+      "Stand zone must match flight zone for contact stands (Schengen aircraft on Schengen pier; non-Schengen on non-Schengen pier) unless swing-stand capable.",
+      "Stand must be free for the full required occupancy window.",
+      "A stand with jetbridge FAULT or status out_of_service is not allocatable for a contact arrival.",
+      "Code E (wide-body) requires a MARS or code-E stand."
+    ],
+    "soft_preferences": [
+      "Prefer same pier as original to minimise passenger and baggage re-routing.",
+      "Prefer contact over remote to avoid bus boarding and extra handler crew.",
+      "Minimise passenger walk distance to connection.",
+      "Preserve buffer to the next arrival on the stand (target >= 25 min).",
+      "Avoid loading a ground handler already at capacity."
+    ]
+  }
+}

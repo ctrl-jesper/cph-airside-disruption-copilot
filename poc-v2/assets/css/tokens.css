@@ -1,0 +1,224 @@
+/* ============================================================================
+   CPH DESIGN SYSTEM — DESIGN TOKENS
+   Single source of truth for the Copenhagen Airport (CPH) front-end system.
+   Faithful to cph.dk: royal-blue led, generous whitespace, classic & clean.
+
+   HOW TO USE
+   ----------
+   1. Link this file FIRST, before components.css and your app styles.
+   2. Reference variables, never raw hex:  color: var(--c-action);
+   3. Swap-in points are marked  [[ SWAP ]]  — pin these to your official
+      CPH brand kit (exact hex + licensed font files) when you have them.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   [[ SWAP ]] BRAND FONT
+   Drop your licensed CPH typeface into /fonts and uncomment. Until then the
+   system renders in Hanken Grotesk (a close, clean Scandinavian grotesque
+   loaded from Google Fonts in the HTML <head>).
+--------------------------------------------------------------------------- */
+/*
+@font-face {
+  font-family: "CPH Sans";
+  src: url("../fonts/CPHSans-Regular.woff2") format("woff2");
+  font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: "CPH Sans";
+  src: url("../fonts/CPHSans-Medium.woff2") format("woff2");
+  font-weight: 500; font-display: swap;
+}
+@font-face {
+  font-family: "CPH Sans";
+  src: url("../fonts/CPHSans-Bold.woff2") format("woff2");
+  font-weight: 700; font-display: swap;
+}
+*/
+
+:root {
+  /* =========================================================================
+     1. COLOR — PRIMITIVES (raw ramps; do not use directly in UI)
+     ========================================================================= */
+
+  /* Royal blue — the CPH signature. [[ SWAP ]] pin --blue-700 to brand blue. */
+  --blue-50:  #eef3ff;
+  --blue-100: #dce7ff;
+  --blue-200: #b8ccff;
+  --blue-300: #85a6fb;
+  --blue-400: #4f79f0;
+  --blue-500: #2354e0;
+  --blue-600: #163fc4;
+  --blue-700: #102e9e;  /* primary brand blue */
+  --blue-800: #0c2278;
+  --blue-900: #0a1a52;  /* deep navy — footer, dark surfaces */
+  --blue-950: #07123a;
+
+  /* Neutrals — cool gray, slightly blue-tinted to sit under royal blue */
+  --gray-0:   #ffffff;
+  --gray-25:  #f8fafc;
+  --gray-50:  #f4f6f9;
+  --gray-100: #edeff3;
+  --gray-200: #e3e6eb;
+  --gray-300: #d2d7df;
+  --gray-400: #aab1bd;
+  --gray-500: #8b93a1;
+  --gray-600: #6b7280;
+  --gray-700: #4a515d;
+  --gray-800: #2c313b;
+  --gray-900: #15171c;
+
+  /* Status — flight board semantics */
+  --green-700: #0f7a40;
+  --green-600: #137a43;
+  --green-100: #e3f4ea;
+  --green-200: #b9e3c8;
+
+  --amber-700: #9a5b00;
+  --amber-600: #c47700;
+  --amber-500: #e08a00;
+  --amber-100: #fcefd6;
+  --amber-200: #f4d79a;
+
+  --red-700: #a3001c;
+  --red-600: #c8102e;   /* CPH-style alert red */
+  --red-100: #fbe7ea;
+  --red-200: #f3bcc5;
+
+  /* =========================================================================
+     2. COLOR — SEMANTIC ALIASES (use THESE in UI)
+     ========================================================================= */
+
+  /* Brand */
+  --c-brand:        var(--blue-700);
+  --c-brand-deep:   var(--blue-900);
+  --c-action:       var(--blue-600);   /* buttons, links, focus */
+  --c-action-hover: var(--blue-700);
+  --c-action-press: var(--blue-800);
+  --c-on-brand:     #ffffff;
+
+  /* Text */
+  --c-text:        var(--gray-900);
+  --c-text-muted:  var(--gray-600);
+  --c-text-subtle: var(--gray-500);
+  --c-text-invert: #ffffff;
+  --c-link:        var(--blue-600);
+
+  /* Surfaces */
+  --c-canvas:      var(--gray-50);   /* page background */
+  --c-surface:     var(--gray-0);    /* cards, panels */
+  --c-surface-alt: var(--gray-25);   /* zebra rows, wells */
+  --c-surface-sunken: var(--gray-100);
+  --c-surface-dark:   var(--blue-900);
+
+  /* Lines */
+  --c-border:        var(--gray-200);
+  --c-border-strong: var(--gray-300);
+  --c-border-focus:  var(--blue-500);
+
+  /* Status — text / surface / border triplets */
+  --c-success:        var(--green-600);
+  --c-success-surface:var(--green-100);
+  --c-success-border: var(--green-200);
+
+  --c-warning:        var(--amber-700);
+  --c-warning-accent: var(--amber-500);
+  --c-warning-surface:var(--amber-100);
+  --c-warning-border: var(--amber-200);
+
+  --c-danger:         var(--red-600);
+  --c-danger-surface: var(--red-100);
+  --c-danger-border:  var(--red-200);
+
+  --c-info:           var(--blue-600);
+  --c-info-surface:   var(--blue-50);
+  --c-info-border:    var(--blue-200);
+
+  --c-neutral:         var(--gray-600);
+  --c-neutral-surface: var(--gray-100);
+  --c-neutral-border:  var(--gray-200);
+
+  /* =========================================================================
+     3. TYPOGRAPHY
+     ========================================================================= */
+  --font-sans: "CPH Sans", "Hanken Grotesk", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Same family, tabular figures — for times, flight numbers, gates */
+  --font-numeric: var(--font-sans);
+
+  /* Type scale (font-size / line-height / tracking) */
+  --fs-display-2xl: 3.5rem;   --lh-display-2xl: 1.04;  /* 56 */
+  --fs-display-xl:  2.75rem;  --lh-display-xl:  1.08;  /* 44 */
+  --fs-display-lg:  2.25rem;  --lh-display-lg:  1.11;  /* 36 */
+  --fs-heading-xl:  1.75rem;  --lh-heading-xl:  1.21;  /* 28 */
+  --fs-heading-lg:  1.375rem; --lh-heading-lg:  1.27;  /* 22 */
+  --fs-heading-md:  1.125rem; --lh-heading-md:  1.33;  /* 18 */
+  --fs-body-lg:     1.125rem; --lh-body-lg:     1.56;  /* 18 */
+  --fs-body:        1rem;     --lh-body:        1.5;   /* 16 */
+  --fs-body-sm:     0.875rem; --lh-body-sm:     1.43;  /* 14 */
+  --fs-caption:     0.8125rem;--lh-caption:     1.38;  /* 13 */
+  --fs-overline:    0.75rem;  --lh-overline:    1.33;  /* 12 */
+
+  /* Weights */
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+
+  /* Tracking */
+  --ls-tight:   -0.02em;
+  --ls-normal:  0;
+  --ls-wide:    0.02em;
+  --ls-overline:0.08em;
+
+  /* =========================================================================
+     4. SPACING  (4px base unit; threes-based rhythm nods to the logo grid)
+     ========================================================================= */
+  --space-0:  0;
+  --space-1:  0.25rem;  /* 4  */
+  --space-2:  0.5rem;   /* 8  */
+  --space-3:  0.75rem;  /* 12 */
+  --space-4:  1rem;     /* 16 */
+  --space-5:  1.25rem;  /* 20 */
+  --space-6:  1.5rem;   /* 24 */
+  --space-8:  2rem;     /* 32 */
+  --space-10: 2.5rem;   /* 40 */
+  --space-12: 3rem;     /* 48 */
+  --space-16: 4rem;     /* 64 */
+  --space-20: 5rem;     /* 80 */
+  --space-24: 6rem;     /* 96 */
+
+  /* =========================================================================
+     5. RADIUS  (CPH reads crisp & squared — restrained corners)
+     ========================================================================= */
+  --radius-xs:  3px;
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --radius-xl:  20px;
+  --radius-pill:999px;
+
+  /* =========================================================================
+     6. ELEVATION  (soft, low-spread, blue-neutral shadows)
+     ========================================================================= */
+  --shadow-xs: 0 1px 2px rgba(10, 26, 82, 0.06);
+  --shadow-sm: 0 1px 3px rgba(10, 26, 82, 0.08), 0 1px 2px rgba(10, 26, 82, 0.04);
+  --shadow-md: 0 4px 12px rgba(10, 26, 82, 0.08), 0 2px 4px rgba(10, 26, 82, 0.05);
+  --shadow-lg: 0 12px 28px rgba(10, 26, 82, 0.12), 0 4px 8px rgba(10, 26, 82, 0.06);
+  --shadow-focus: 0 0 0 3px rgba(35, 84, 224, 0.35);
+
+  /* =========================================================================
+     7. MOTION
+     ========================================================================= */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphatic: cubic-bezier(0.3, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  /* =========================================================================
+     8. LAYOUT
+     ========================================================================= */
+  --container-max: 1200px;
+  --container-wide: 1360px;
+  --header-height: 64px;
+}

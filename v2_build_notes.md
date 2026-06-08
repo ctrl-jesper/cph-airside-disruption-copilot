@@ -1,0 +1,291 @@
+# CPH AI Business Lead Case — v2 build notes
+
+Running record of locked decisions and approved phrasings for the presentation. Built from scratch in session "CPH Airport v2".
+
+## Locked decisions
+
+1. **Problem framing: SCQR.**
+   - Situation: busy day, high traffic, several flights already delayed (early-turnaround delays, European airspace capacity pressure, ground-handler limits).
+   - Complications: a central stand goes out of service (technical fault); multiple aircraft arrive outside planned slots; some departures delay further and hit the next turnaround; ground handlers cannot service all simultaneous turnarounds optimally. Decisions are complex because of many interdependencies (passenger flow, gates, passport control Schengen vs non-Schengen, baggage, crew, handling); the optimal solution one place creates problems elsewhere, and consequences are not always immediately visible; today handled manually, knowledge is person-bound.
+   - Question: how can an AI-enabled solution support these real-time decisions?
+   - Resolution: the solution idea and PoC vs full scale (below).
+
+2. **Scope the two decisions differently.**
+   - Stand allocation is the airport's own decision. The AI is proactive here.
+   - Divert or cancel is the airline's call (with ATC and the Network Manager). The AI does not recommend cancel; it detects when no feasible stand solution exists, quantifies the knock-on, and escalates the trade-off. Keeps it inside EU AI Act human oversight.
+
+3. **Solution architecture: hybrid decision-support copilot, human-in-the-loop, read-only.**
+   - Optimization core (OR, deterministic): constraint solver / MIP does feasibility and ranking. Not an LLM.
+   - Predictive layer (ML): realistic on-block/off-block/turnaround times from historical A-CDM data.
+   - Copilot interface (LLM): plain-language framing, presents ranked options with consequence flags and confidence, captures tacit rules, logs decisions. Explains; never allocates; never writes back to Airhart.
+   - Matches Microsoft's reference architecture (no auto-write, human review-and-accept) and EASA Level 1/2.
+
+4. **PoC (build yourself, weeks):** advisory stand-reallocation copilot on a synthetic AODB snapshot; hard-constraint filter + weighted scoring; top-3 options with consequence flags, confidence, degraded mode; read-only; advisory. Recommend the hybrid build (deterministic logic computes flags, LLM narrates) over Copilot-Studio-only, so flags are "computed, not guessed."
+
+5. **Full scale (involve others, months+):** real MIP/CP solver with Pareto trade-offs across the whole apron; ML timing model; governed live read-only Airhart + A-CDM integration; handler capacity, baggage topology, passenger connection data; divert/cancel escalation workflow; embedded UI, monitoring, audit; EU AI Act conformity, works council/adoption; the digital twin as the modular long-term destination.
+
+6. **Dependencies → consequence flags.** PoC shows 5 of 6 dependencies: passport control (full), gates/buffer (full), handling load (first-order flag), baggage belt (first-order flag), passenger flow (walking-distance proxy). Crew is the honest gap. PoC shows first-order consequences; the digital twin simulates the cascading ripple.
+
+7. **Division of labour in the full-scale stack (mental model / slide):**
+   - ML gives realistic times (the inputs).
+   - Solver (MIP/CP, Pareto) gives the best trade-off allocations across the whole apron now (the breadth).
+   - Digital twin / simulation projects a chosen allocation forward to reveal the cascade (the depth over time).
+
+8. **Digital twin placement:** vision / destination, delivered modularly (system-of-systems), not the first build. It is the correct tool for the cascading-consequence half of the problem the PoC cannot reach.
+
+## Approved phrasings (use close to verbatim)
+
+### Pareto front = the case's central sentence
+> That frontier is the case's sentence made mathematical. "The optimal solution one place creates problems elsewhere" is exactly what a Pareto front expresses: you cannot improve handler balance without worsening passenger walking distance, you cannot maximize contact-stand use without sacrificing schedule stability. The solver does not hide that tension inside one number. It lays out, say, three genuinely different non-dominated strategies, one that protects passengers, one that protects the handlers, one that protects the schedule, and makes the operator or the governance owner choose which trade-off to accept.
+
+## Demo requirement: live curveball handling (added by Jesper)
+During the presentation, Jesper wants to take unscripted follow-ups live, e.g. "what if B16 also goes out?" or "ignore the remote option, what else?". This is the main argument for demoing the Copilot Studio agent (open-ended natural language) on top of the local app.
+- Copilot Studio version: must handle conversational re-queries and constraint changes.
+- Local app (offline fallback): add lightweight interactive controls so the most likely curveballs work without internet — e.g. click any stand to take it out of service, and an "ignorér remote" filter — then re-run ranking. Keeps curveball capability even if the hotspot drops.
+
+## PoC UI architecture (locked, v2 redesign)
+Driven by feedback that the case needs plural allocations and redirect/cancel, not one plane to one stand. Confirmed choices: per-flight triage queue (not a whole-board solver), and redirect/cancel framed as escalation candidates (not autonomous cancel).
+- Left rail (persistent): "Issues affecting operations" + a count of flights needing a decision.
+- Tabs: Recommendations (default) | Arrivals | Departures | Stands.
+- Recommendations = action queue, one row per disrupted flight, with recommended action + confidence; click a row to expand ranked stands (arrivals) or the hold/cancel rationale (departures).
+- Action spectrum demonstrated: Re-stand High (SK1425 to B16), Re-stand Medium (LH2438 to A12), Redirect candidate escalate (EK0151, A380 code F, no stand), Hold/monitor (DY1741), Cancellation candidate escalate (WF402).
+- Sequential allocation: flights triaged in priority order so two never get the same stand. This also makes the harden toggle cascade: hardening pushes SK1425 to remote R6, which makes LH2438 a redirect candidate because SK took the last remote. Strong live demonstration of interdependency.
+- Whole language is English. Legend panel defines size codes A–F, contact/remote, Schengen, buffer, belt, handler, confidence, redirect/cancel. Harden toggle shows an explicit "what changed" banner.
+- All decision logic is deterministic (hard filter + weighted score), computed and inspectable, not LLM-generated. This is the answer to "that's just a chatbot."
+
+### v2 interaction model (stateful, human-in-the-loop)
+- Tab order: Arrivals, Departures, Recommendations (3rd), Changes, Stands. Harden moved to the left Issues panel; hardening injects two issue cards there.
+- Recommendations are computed against committed assignments. Two flights can both want B16 until one is assigned; the loser re-ranks to its 2nd option. Data tuned so SK1425 and LH2438 both top B16 to demo this.
+- Assign button on every ranked option (human picks). Assigning locks the stand (shown in Stands as "assigned <flight>") and removes the flight from the queue into Changes.
+- Redirect/cancellation candidates have an Escalate button opening a modal with a drafted message to the airline + ATC/Network Manager. Hold/monitor has an Acknowledge button.
+- Changes tab logs every assigned/escalated/held action with Undo. Counts (decision count, Recommendations pill, Changes pill) update live.
+- Clicking a "needs decision" status pill in Arrivals/Departures jumps to Recommendations and expands that flight.
+- Strong demo cascade: assign B16 to SK1425 → LH2438 auto-drops to A12; or Harden → SK1425 to remote, LH2438 contests the last remote, becomes redirect candidate when SK takes it.
+
+### A380 remote stand + tab notification badges (added by Jesper)
+Jesper showed that CPH does maintain remote stands able to take an A380 (passengers bussed). So EK0151 (Emirates A388, code F) should recommend a remote stand, not be a redirect candidate.
+- Added stand R8 to the synthetic data: remote, mixed zone, maxCode F, Aviator handler at capacity. It is the only stand that fits a code-F aircraft. EK0151 now recommends "Remote R8 — review with handler" at Low confidence, with the handler-at-capacity flag and bus-boarding shown. Low (not Medium) is deliberate and honest: an A380 on a stretched remote handler is a real compromise and the human-in-the-loop trigger to coordinate before committing. Flip R8's handler to ok to read Medium if preferred.
+- Added a right-size (oversized-stand) soft penalty: sizeGap * 5 per code the stand is larger than the aircraft. This stops a narrowbody from being recommended onto the scarce code-F stand when a smaller remote (R6, code E) is free. Without it, a hardened-scenario narrowbody could outrank the A380 for R8 and strand it. Verified: in the hardened scenario SK1425 and LH2438 both prefer R6, EK0151 keeps R8, and LH2438 becomes the redirect candidate once SK takes R6.
+- Arrivals and Departures tabs now carry a deep-blue notification badge counting flights with status = needs decision (3 and 2 in the base scenario). Badges hide at zero and update live with assignments and escalations.
+
+### Continuous revalidation of committed assignments (added by Jesper)
+Scenario: the operator assigns stands in the calm picture (SK1425 to B16, LH2438 to A12), then the scenario hardens and the injected issues (B16 jet bridge fault, A12 occupied until 15:40) make those committed stands illegal. The tool must re-flag the broken assignments, not treat them as final.
+- Invalidation is computed, not stored. invalidInfo(fid) re-runs checkHard on each assigned stand under current conditions every render; nothing is mutated on harden. This means toggling harden off self-heals the assignments, and it mirrors the case principle that decisions are provisional and the system keeps watching the dependencies. Strong talking point: "the copilot does not just allocate once, it continuously revalidates against the live picture."
+- committedStands() counts only valid assignments, so an invalidated stand frees back into the pool and the flight re-ranks. In the hardened cascade both SK1425 and LH2438 re-open, lose their contact stands, and re-rank to remote R6 (contention), with the loser becoming a redirect candidate.
+- One open() helper (arrivalOpen / departureOpen) drives the queue, the status pills (re-decide), flag-rows, tab badges, and the decision count. The Changes tab marks a stale assignment as "Re-stand (superseded)" with a re-decide pill and the exact reason (for example "B16 no longer valid: Jet bridge fault").
+- Demo line: assign everything in the calm scenario, hit Harden, and the tool instantly re-opens exactly the two flights whose stands broke, with the reason shown, and routes them to the only remaining (remote) options.
+
+## Visual identity (CPH brand, official assets)
+Jesper supplied official brand assets. Implemented faithfully.
+- Fonts (in poc/assets/fonts, embedded via @font-face): CPH Airfield (CphAirfield-Positive.otf) for headings (h1, h2, the big count); Open Sans (TTF, weights 400/600/700 + italic) for body. Per Jesper: Airport/Airfield for headings, Open Sans for body.
+- Logo (poc/assets/img): real CPH Aeronautic Primary Full mark (navy parallelogram, Sunrise Yellow "CPH") in the header.
+- Official palette only (from cph_brand_identity_colours PDF): Midnight Blue #060E4D, Sunrise Yellow #FFDD66, Sunshine Yellow #FEF9D8, Horizon Blue #DCE7F7, Sky Blue #88A8ED, Twilight Blue #4E55AB, Evening Blue #170D81, Space Black #171717, Clear Sky White #FCFBFA, Misty Grey #E6E2DC, Storm Grey #C4BFBB.
+- Brand-only status system (the palette has NO functional red or green): positive = pale Horizon Blue; attention = Sunrise Yellow; critical = filled Evening Blue. Distinguishable by light-blue / yellow / deep-blue. KNOWN TRADEOFF flagged to Jesper: this loses conventional traffic-light red/green legibility in an ops context; offered to add a functional signal set if he approves.
+- Time-precision cue: struck-old-time over new-time on Arrivals/Departures, plus a live clock chip. Reinforces the brand's time emphasis.
+- Hover tooltips on key concepts (size code, contact/remote, Schengen/zone, buffer, baggage belt, ground handler, confidence, slot, each action type). Legend panel remains the full reference.
+- Assets are local files in poc/assets; app still works offline (relative @font-face and img paths).
+
+## Copilot Studio version (Phase 2)
+Decision: build the grounded-knowledge version first. Keep a note to attempt an action-backed version before Friday if time allows.
+- Grounded knowledge = a Copilot Studio agent grounded in a prepared scenario pack that holds the data, the constraint and scoring rules, and the engine's pre-computed recommendations for the base and hardened scenarios. The LLM narrates and explains the engine output in natural language; it does not compute. Fast and demo-safe.
+- Artifacts authored in Outputs/CPH Airport - AI Business Lead Case/copilot-studio/: knowledge_pack.md (the grounding doc, mirrors the local app data and verified outputs exactly), agent_instructions.md (the system prompt with the hard rules), build_guide.md (access check + click-by-click + publish for iPhone hotspot), demo_qa.md (conversation starters, follow-ups, curveballs, expected answers).
+- Honesty framing locked: the recommendations come from the deterministic engine (local app); the Copilot Studio agent is the conversational interface layer on the CPH Microsoft stack. This is the answer to "is this just a chatbot." In the full system the agent calls the solver as an action.
+- TODO before Friday (stretch): action-backed version. The agent calls a Power Automate flow or a small hosted endpoint that runs the real constraint engine, so answers are computed live, not read from a pack. Higher setup risk; only if the grounded version is locked and rehearsed first. This is the most faithful demonstration of "computed, not guessed" on the Microsoft stack.
+- Open gating item: Jesper's Copilot Studio access is unconfirmed (needs an M365 / Entra work account, not the personal Gmail). The build guide step 0 handles the check and fallbacks.
+
+## Synthetic data seeded with real CPH traffic (added by Jesper)
+Goal: make the board feel like genuine CPH traffic while keeping the exact scenario reproducible. The dataset is treated as two layers. The identity layer (flight number, carrier, route, aircraft type) is made CPH-accurate. The mechanics layer (size code, zone, times, planned stand, buffers, delays, inbound status, needs-decision flags) drives the scenario and was left byte-for-byte identical.
+- EK0151 renamed to EK151, the real Emirates Dubai to Copenhagen flight, genuinely an A380. Verified: Emirates maintains daily A380 service to CPH from 01 June 2026 (aeroroutes, emirates.com). Real EK151 lands about 13:15; in the scenario it is off-slot at 14:55, so the delay reads as a genuine event. This makes the centerpiece (the A380 needing a remote stand) a real, checkable flight.
+- Board-fillers added for a busy-afternoon feel, all real CPH services, all needs-decision false so the engine is untouched: arrivals AY911 (Finnair, HEL) and KL1129 (KLM, AMS); departure LH837 (Lufthansa, FRA). Board is now 7 arrivals and 4 departures; decision badges stay 3 and 2.
+- Other carriers and routes were already real (SAS OSL/ARN/LHR, Norwegian BGO, Lufthansa FRA, Eurowings DUS, Wideroe regional). Flight numbers other than EK151 are realistic but illustrative, not claimed as specific scheduled services.
+- Re-verified after the change: base queue unchanged (SK1425 to B16 High 74, LH2438 to B16 Medium 66 then A12, EK151 to R8 Low 27 only fit, WF402 cancellation, DY1741 hold), B16 contention intact, harden cascade re-opens SK1425 and LH2438 with the same reasons. Knowledge pack, demo_qa, and the PDF updated to match.
+
+## v2 front-end restyle: CPH design system (REVERTED 2026-06-08)
+Status: reverted at Jesper's request. The active poc/ is the v1 look again (official midnight-blue and Sunrise-yellow brand). The design-system restyle was archived to poc-v2/ (not deleted). poc-v1/ remains the canonical v1 snapshot. To delete the archive entirely: remove the poc-v2/ folder. To re-apply this direction later: the design system source is in poc-v2/assets/css/ and Jesper's Downloads (tokens.css, components.css). The notes below describe what the restyle did.
+
+Jesper supplied a two-file CPH design system (tokens.css + components.css), a cph.dk-faithful royal-blue look with proper semantic status colours. v1 was frozen first (poc-v1) so this is a clean v2 direction.
+- Decisions: full cph.dk royal-blue system (not the official midnight-blue/yellow kit); keep the bundled CPH Airfield (headings) and Open Sans (body) so the app stays offline (no Google Fonts); keep the real CPH Aeronautic logo.
+- Files copied to poc/assets/css/ and linked first (tokens, then components). The app's own CSS was rewritten to build on the design tokens (var(--c-*), spacing, radius, shadow, type scale). The JavaScript engine, data, and scenario were left completely untouched; only the <head> styles and the header markup changed.
+- Header rebuilt into the cph.dk pattern: a deep-navy utility bar (Copenhagen Airport, Airside Operations, Decision Support, live clock, synthetic-data badge) above a white header with the logo and the app title in CPH Airfield.
+- Semantic status mapping (this resolves the earlier no-functional-red/green tradeoff): success green for assigned/ok/free/on-slot/High; warning amber for off-slot/occupied/escalated/Medium and attention rows; danger red for needs-decision/re-decide/out-of-service/redirect/cancel/Low. Tab notification badges are red.
+- Verified after restyle: tokens load (brand #102e9e), no console errors, base scenario unchanged (5 decisions, SK1425 B16 High, EK151 R8 Low, etc.), contention and the harden cascade render correctly with the new colours.
+- Minor open item: the JS action labels still contain em dashes (for example "Remote R8 — review with handler", "Cancellation candidate — escalate"). These are pre-existing UI microcopy. If wanted, replace with a colon or comma in a later pass.
+
+## Verified facts available to cite (from deep research)
+- Stand allocation and gate assignment are both provably NP-hard.
+- CPH is a fully implemented A-CDM airport (connected 2016-12-19; one of 34 European A-CDM airports).
+- EU AI Act Article 14: high-risk AI needs effective human oversight (disregard, override, reverse, stop).
+- EASA NPA 2025-07 covers only Level 1 (assistance) and Level 2 (human-AI teaming).
+- Microsoft reference architecture for contextual AI decision support: no auto-write, human review-and-accept (Xrm.Copilot client API flagged preview, not production).
+- Airport Ground Optimizer: 21.6% delay-time and 27.9% hold-fuel reduction in simulation vs FCFS baseline. Directional only (simulated, weak baseline, surface/taxi focus, not stand reallocation).
+
+## Do not repeat from v1 unless verified
+- Assaia / ApronAI / "AIRHART" turnaround claims at CPH and the "6.5 minute" figure. Airhart is CPH's AODB, not an Assaia product.
+- Schiphol works-council agreement; "25% gate-change reduction." Unverified.
+
+## Full Scale app (second demo app, beyond the PoC)
+Separate self-contained app at `full-scale/index.html`, served on port 8124 (launch config `cph-fullscale`, in `.claude/launch.json`). Reuses the PoC brand assets, copied into `full-scale/assets/`. Demonstrates the production / "involve others" column of the PoC-vs-full-scale comparison: whole-apron re-optimization, a real MIP solver with a Pareto front, and a digital twin cascade. The PoC stays the per-flight triage tool; this app is the apron-wide vision. Decision logic is deterministic and inspectable, same honesty framing as the PoC.
+
+### Locked build decisions
+- **Engine: real MIP in the browser.** Vendored `glpk.js` v5.0.0 (GLPK compiled to WebAssembly) as one self-contained offline file at `full-scale/assets/glpk.js` (WASM and worker inlined as compressed base64; async `solve` runs in a blob worker). Chosen over a pure-JS Hungarian fallback so the slide claim "real MIP solver" is literally true in the demo. Approved by Jesper against the no-new-dependency rule.
+- **Pareto front via epsilon-constraint** (bulletproof for integer programs; weighted-sum alone misses non-supported points). Three signature strategies: protect passengers, protect handlers, protect schedule.
+- **Digital twin: both views.** Gantt timeline plus dependency gauges as the core analytical view, with a flow/network animation as a second toggle mode of the same projected allocation.
+- **ML timing layer and live feeds are synthetic**, labelled as the production data sources (Airhart feed, handler capacity, baggage topology, passenger connections). No claim of a trained model.
+- **Governance carried over**: read-only, advisory, human-in-the-loop; never auto-cancels or diverts; detects infeasibility and escalates.
+
+### Data model (locked, `full-scale/index.html`)
+- 18 stands across 4 contact piers (A Schengen, B Schengen with B16 the failed central code-E stand, C non-Schengen, E mixed) plus a 6-stand remote apron. R8 is the only code-F stand, so the EK151 A380 is forced there. Each stand: type, ICAO size code, zone, baggage belt, walking-time proxy.
+- 3 ground handlers with capacities (Aviator, Menzies, SGH); 5 baggage belts.
+- 19 flights: 8 in the disruption set (needsRealloc true) the optimizer must place, plus settled traffic and two departures flagged for escalation review (DY1741 hold, WF402 cancel). Signature flights continuous with the PoC: EK151 (real Emirates A380, off-slot 14:55), SK1425, LH2438. Each flight carries scheduled vs ML-predicted on-block, uncertainty band, dwell, pax, bags, connecting pax, tightest connection.
+- Times are minutes since local midnight; base now = 14:20 = 860.
+
+### MIP formulation (Phase 2, verified)
+- Binary x[flight,stand]. Each flight gets exactly one option (a stand or an ESC escalate dummy at cost 10000 that keeps the model feasible and surfaces redirect/cancel candidates).
+- Hard constraints: size code (stand >= aircraft), stand availability (out-of-service and settled-occupancy time windows), and one aircraft per stand at overlapping times (pairwise conflict constraints).
+- Soft costs in the objective: passenger (pax-weighted walk + remote connection penalty), handler (handler load factor x remote multiplier x pax), schedule (remote penalty + oversize sizeGap penalty + forced zone-change penalty).
+- Verified base solve: status Optimal, objective ~540, 89 binary vars, 209 constraints (201 time conflicts), ~8 to 36 ms. EK151 forced to R8, no spurious escalations.
+- KNOWN TUNING for Phase 3: the three soft costs partly align (all dislike remote), so the Pareto corners need the handler base loads and cost scales tuned to produce three visibly distinct allocations. Do this with the epsilon-constraint sweep, not before.
+
+### Phase status
+1. Scaffold, brand, synthetic data model, whole-apron board with live ticking feed. DONE.
+2. MIP optimizer (glpk.js), Optimize tab, single balanced solve. DONE.
+3. Pareto trade-off chooser (epsilon-constraint, three strategies, selectable). DONE. Verified: 14 non-dominated points, 3 distinct corners, ~330 ms; selecting a strategy sets window.__selectedStrategy for the twin.
+4. Digital twin cascade. Gantt timeline + dependency gauges (passport queue S/N, handler load, baggage belt, connections at risk, turnarounds slipping) + cascade event log + play/scrub control, fed by the selected strategy (or balanced fallback). DONE and verified: the A380 forced to remote R8 spikes the non-Schengen passport queue to ~309 at 15:20 and puts ~96 connecting passengers at risk, the signature cascade the snapshot optimizer cannot see. Flow/network animation as a second toggle mode: NEXT (Phase 4b). Also added: a Definitions tab (engine, scores, units, Pareto, airport terms), contextual per-tab titles, and a modeling fix so departures block their stand (30-min pre-departure lead) in the MIP.
+   Twin sim constants: SIM_T0 850 to SIM_T1 1000, 5-min steps; PASSPORT_CAP S 240 / N 180 pax per 5 min; CONNECT_OVERHEAD 15 min (security recheck + gate walk); HANDLER_SLIP 15 min.
+5. Divert/cancel escalation, ML timing framing, governance, legend, honesty notes.
+6. Verify end-to-end, document, screenshots.
+
+### How to run
+preview_start config cph-fullscale, or python3 -m http.server 8124 --directory "Outputs/CPH Airport - AI Business Lead Case/full-scale". App at http://127.0.0.1:8124. Tabs: Apron, Flights, Optimize (Trade-offs and Digital twin added in later phases).
+
+### Phase 4.5: human-in-the-loop commit loop + continuous revalidation (DONE, verified)
+Added the accept-and-commit step that was missing, so the optimizer/Pareto proposals flow into the live picture only when a human accepts. Closes the disconnect where the Optimize result never reached the Flights/Apron tabs.
+- State: `state.committed` (flightId -> standId or 'ESC', human decisions only), `state.changeLog`, `state.loggedInvalid`, `state.injected`. `CV` (valid/invalid) recomputed every render.
+- Accept actions: "Accept this allocation" on Optimize, "Accept this strategy" on Trade-offs. Commit writes to state.committed, logs each change, jumps to the Changes tab. Nothing ever auto-commits.
+- Flights tab now shows Assigned <stand> / Escalated / Re-decide; Apron shows committed aircraft on their stands (label "(assigned)"); left count and Optimize badge show flights still awaiting a decision; Changes badge shows committed count.
+- Changes tab: a full decision log (time, action pill, flight -> stand, reason, Undo) with a summary (Assigned / Escalated / Re-decide / Awaiting). Per-row Undo returns a flight to the queue.
+- CONTINUOUS REVALIDATION (the requested PoC parity): computed not stored. `recomputeCV()` re-runs `checkCommittedValid()` on EVERY committed assignment each render (OOS, size, settled/departure occupancy, committed-vs-committed overlap), not just queue flights. Invalid ones are superseded (logged once via `revalidateLog`), returned to the queue, and freed from the board; clearing the condition self-heals and logs a restore.
+- Disruption injector (left rail): "Inject disruption" sets E30 and C26 out of service (DYNAMIC_OOS), demonstrating the sweep; "Reset to live" clears all decisions and the log. `isStandOOS`/`standOOSReason` replace direct `s.oos` reads everywhere so dynamic faults propagate to the optimizer (isEligible) and the board.
+- Also fixed: departures now block their stand in the MIP (30-min pre-departure lead) via `occWindowOf`/`nonReallocOnStand`, so the optimizer never puts an arrival on a stand a departure needs.
+- Verified end-to-end: accept 8 -> queue 0, log 8; inject E30+C26 -> exactly LH2438 (E30) and TK1789 (C26) superseded, queue 2, re-decide 2, others untouched; clear -> self-heal, 2 restores; reset -> clean. No console errors.
+- The Digital twin now projects the committed allocation once all flights are resolved (getActiveAllocation prefers committed), else the selected strategy or balanced fallback.
+
+### Phase status (updated)
+4b. Digital twin flow/network animation as a second toggle mode: STILL PENDING (the only remaining planned build).
+
+### Phase 4.5 refinements (DONE, verified 2026-06-08)
+Feedback from Jesper after the commit loop landed:
+- Optimize tab now revalidates its displayed plan against the live picture (renderOptimizePlan called each render): rows whose stand went out of service are flagged "No longer valid" and a stale banner prompts a re-run. Previously only the Flights tab reflected an injected disruption.
+- Event log (renamed from "Changes"): per-flight history filter (chip per flight, click to see that flight's full event history across all accepts), and accepting an allocation now logs a batch "Plan accepted: <source> · N assignments" event, so a strategy change (e.g. switching to Protect handlers) is itself a logged event. Flight names in the log are clickable to filter.
+- Verified: accept logs the batch event; re-accepting Protect handlers logs a second accept event; SK1425 history shows both assigns; injecting flags LH2438 (E30) and TK1789 (C26) as No longer valid on the Optimize tab with the stale banner. No console errors.
+
+### Presentation TODO (cost and token economics) — raised by Jesper 2026-06-08
+The deck must address the solution's running costs, including Microsoft 365 / Copilot Studio token costs ("M365 tokenomics"). Reference Jesper shared: https://softspend.com/community/post/introducing-microsoft-365-tokenomics . Cover: solver/compute cost (the MIP runs client-side, effectively free; the LLM interface layer is where token cost lives), Copilot Studio message/consumption pricing, and a rough cost envelope for the PoC vs the production system. Not built into the app; this is deck content for the Business value and Governance sections.
+
+### Cascade attribution + Phase 4b flow view (DONE, verified 2026-06-08)
+- Cascade events in the digital twin now carry attribution. buildSteps returns riskFlights; simulateTwin adds `sources` to queue-peak and handler-overload events (the flights driving them, top 3 by pax) and `affected` to the connection-risk event (the flights whose connecting pax are at risk). Rendered as a "Source:" / "Affected:" sub-line with flight chips. Verified: non-Schengen peak sources EK151 (489 from DXB, remote), TK1789, BA822; connection risk affects EK151 (96).
+- Phase 4b: the digital twin now has a Timeline / Flow toggle (window.__twin.mode). Flow is a 3-column network (Arrivals -> Passport control -> Onward): EK151 as its own node, Other non-Schengen, Schengen arrivals -> Non-Schengen / Schengen passport -> Connections (at-risk) / Landside. Edge thickness is current flow; congested nodes turn deep blue and pulse; edges animate (stroke-dashoffset) with a faster "hot" variant on the congested path. renderFlowFrame rebuilds per scrub/play frame. Verified at the 15:20 peak: 7 nodes, 7 edges, 3 hot edges, 3 pulsing nodes, non-Schengen passport 309 waiting, Connections 96 at risk. No console errors.
+- This completes the originally planned full-scale build (Phases 1-4b). Remaining is polish/QA and the presentation (incl. the cost/tokenomics section noted above).
+
+### Event log expandable flight history + feed/flights polish (DONE, verified 2026-06-08)
+- Event log rows are now expandable: clicking a decision row folds out a per-flight timeline beneath it (chevron indicator, accordion via state.expandedSeq). The timeline synthesizes scheduled on-block, ML-predicted on-block (with delay and band), then every logged decision for that flight in time order. Example verified for SK1425: 14:15 Scheduled on-block / 14:20 Predicted on-block 14:28 (+13 min, ±4m) / 14:20 Assigned B18 (whole-apron optimum) / 14:25 Assigned E30 (Protect passengers). Rendered as a dotted timeline with a spine; system rows (Plan accepted, Picture change) are not expandable. Functions: toggleExpand, flightTimeline, timelineLabel, flightTimelineHtml.
+- Flights tab: on-stand flights now show clearing time in the status ("ON STAND C26 · CLEARS 14:45"); inbound flights still show predicted on-block vs schedule. flightStatus gained an onStand() helper used for settled and committed flights.
+- Live feed disruption box rewritten as an operational alert list ("ISSUES AFFECTING OPERATIONS" + one line per out-of-service stand, derived from STANDS.filter(isStandOOS)), so injected E30/C26 faults appear as their own issue lines. Removed the audience-narration paragraph.
+
+### OPEN / proposed (not yet built): strengthen handler-capacity representation
+The case states "ground handlers cannot service all simultaneous turnarounds optimally." Currently handler capacity is a soft cost + gauges + a twin overload->slip cascade, but the seeded scenario never pushes a handler over capacity (peaks ~50-67%), so the cascade does not fire by default. Proposed: tune the scenario so Aviator is at/over capacity at the peak (matches the locked "Aviator at capacity" note), turning the gauge red, diverging the Protect-handlers plan more, and firing the twin overload->slip->conflict cascade; add a feed line "Aviator reports it cannot service all simultaneous turnarounds." Ripples through verified numbers, so do as its own pass + re-verify. Awaiting Jesper's go.
+
+### Stand-arrival status + disruption injector menu incl. handler-over-capacity (DONE, verified 2026-06-08)
+- Flights tab status now shows stand-arrival time for assigned inbound flights ("Assigned B18 · arrives 14:28"). The arrival time is the flight's predicted on-block (f.predOn), which is exactly the Gantt bar start in the twin, so the two match precisely. Settled inbounds also gained "Inbound · arrives HH:MM".
+- The handler-capacity gap (case: "ground handlers cannot service all simultaneous turnarounds") is now handled as an INJECTABLE disruption rather than baked into the base scenario (Jesper's call). The single "Inject disruption" button is replaced by a disruption injector menu at the bottom of the left rail (under the gauges): "Stand faults · E30, C26", "Aviator over capacity", and "Reset to live". Each is an independent toggle with active highlight.
+- state.injected -> state.disruptions { standFaults, handlerShortage }. New handlerCapacity(id) helper returns SHORTAGE_CAP (2) for SHORTAGE_HANDLER (Aviator) when handlerShortage is on; every h.capacity read (gauge, handlerLoadFactor, applyHandlerSlip, buildSteps, simulateTwin) now goes through it. So injecting "Aviator over capacity" makes the gauge hit 2/2 critical, raises Aviator's load factor 0.33->1.0 (optimizer cost up, Protect-handlers plan diverges), adds the feed line "Aviator cannot service all turnarounds (crew shortage, capacity 2)", and fires the twin overload->slip cascade ("Aviator over capacity (3/2), turnarounds stretching", 1 slip). Verified end-to-end. No console errors.
+- Note: handler shortage is a soft pressure (gauge/cost/twin), not a hard re-decide, matching the case's "human reviews and coordinates" framing. Stand faults remain hard (revalidation re-flags committed flights).
+
+### Feed restructure (Summary + Stands out of service) + polish/QA pass (DONE, verified 2026-06-08)
+- Left rail feed reworked: a yellow SUMMARY box at top carries a dynamic prose recap of all current issues (buildSummary() composes B16 base + injected stand faults + handler shortage + re-decide count). Below the count box, a "STANDS OUT OF SERVICE" list (id oosList) renders one row per OOS stand styled like the gauge sections (gate id left, reason/code/zone right). Replaces the single "Issues affecting operations" box.
+- Polish: fixed three stale "arrives in the next phase / next build phases" copy strings (apron read-only note, optimize intro, pareto selHead) now that Optimize/Trade-offs/Digital twin all exist.
+- QA sweep verified: no em or en dashes anywhere; no stale code refs (disruptionBox/toggleInject/state.injected/injectBtn all gone); all 7 tabs render; summary + oos list update dynamically with disruptions and re-decides; clock advance updates gauges/apron (13/17 free at 14:50); twin base cascade intact; flow mode renders; handler-shortage injection propagates. No console errors or warnings.
+
+### NEXT: Copilot Studio (the LLM interface layer)
+The full-scale app (deterministic engine) and the PoC are the two demo apps. The Copilot Studio agent is the third architecture layer (conversational LLM front-end). Artifacts already authored in copilot-studio/ (knowledge_pack.md, agent_instructions.md, build_guide.md, demo_qa.md) ground on the PoC. Open decisions before building: (1) M365/Entra work-account access (Copilot Studio needs it, not the personal Gmail) — still unconfirmed; (2) whether to ground the agent on the PoC, the new full-scale app, or both. I can author/update the knowledge pack + grounding PDF, agent instructions, build guide, and demo Q&A; Jesper builds the agent in his tenant.
+
+## Out of scope (state explicitly in documentation and deck) — added 2026-06-08
+Two deliberate scope boundaries. Declare both openly in the assumptions/scope slide and the written documentation rather than letting the panel surface them. Owning a boundary reads as judgement; being caught at one reads as a gap.
+
+1. **Crew dependency: not modeled.** The model covers five of the six interdependencies (passport control Schengen/non-Schengen, gates and buffer, ground-handler load, baggage belt, passenger walking distance). Crew duty limits, crew positioning, and crew-to-aircraft qualification are out of scope. Rationale to state: crew duty and roster data are person-bound and sit in airline crewing systems, not the airport AODB, so an airport-side decision-support tool cannot see them without an airline data-sharing agreement. Treat crew as a named full-scale extension dependent on airline integration, not an oversight. NOTE for deck: deck/deck.html line 228 currently lists "crew" inside the covered dependency set ("Schengen, bagage, gates, crew og handling"). Correct that line so crew is not claimed as in-scope when the deck is next revised.
+
+2. **Pareto corner distinctness: not tuned for the demo.** The three signature strategies (protect passengers, protect handlers, protect schedule) come from a real epsilon-constraint sweep over the MIP, but the three soft cost terms partly align (all penalise remote stands), so the corner allocations may not look dramatically different on a small instance. Tuning the cost scales and handler base loads to force visibly distinct corners is out of scope for the demo. Rationale to state: the Pareto front is genuine and the method is correct; corner separation is a calibration that depends on the live cost weights the governance owner sets in production, not something to hand-tune for a demo. If asked, the honest answer is that the points are non-dominated solutions from an epsilon-constraint sweep, not three hand-picked numbers.
+
+### Digital twin flow redesign: 5-column Sankey, always beside the Gantt (DONE, verified 2026-06-08)
+- Removed the Timeline/Flow toggle. The Digital twin now shows BOTH charts: Gantt and the passenger-flow Sankey, in a responsive grid (.twin-charts): stacked full-width by default, side by side at viewport >= 1650px (a 5-column Sankey is unreadable beside the Gantt at narrower widths; full-width stacked stays legible).
+- The flow is now a real 5-column Sankey of the disrupted arrivals: ARRIVALS (one node per re-allocated flight, EK151 now its own node, sized by pax, deep blue when it is the active A380) -> PASSPORT (Schengen / non-Schengen arrivals) -> PASSPORT CONTROL (the queues, congested node turns deep blue) -> ONWARD (Connections / At risk / Landside) -> DEPARTURES (6 synthetic outbound flights). Ribbon width is passengers; flows are cumulative-by-now so the Sankey builds as you play. Proper ribbon tiling (per-node out/in cursors); per-column height scaling for legibility.
+- Synthetic OUTBOUND array (SK1419 OSL, LH2462 FRA, BA825 LHR, AY913 HEL, DL271 JFK, EK152 DXB) with share weights; the three earliest departures absorb the at-risk passengers. Not part of the optimizer.
+- Hover tooltips on every node and ribbon (45 total) via a fixed-position #sankeyTip div; arrival/link tooltips surface the walking distance ("EK151 ... stand R8, +25 min walk, reaches passport 15:20"), which answers the walking-distance question: walk was already in the model (reach = on-block + walk) driving passport timing and the connection-risk test; now it is visible.
+- Verified: 21 nodes, 24 ribbons at peak, tooltips fire with detail, empty at 14:10 and builds to peak, no console errors. riskFlights now carry their flag time so at-risk can be split by zone over time.
+
+### Digital twin starts at the live clock (DONE, verified 2026-06-08)
+runTwin now sets the starting scrub index from state.now (round((now - SIM_T0)/SIM_STEP)) instead of the peak, and auto-plays forward from there (twinPlay called after renderTwin, clearing any prior timer first). Verified: opens at 14:20 by default and runs forward; if the live feed has advanced to 15:05 the twin starts at 15:05. No console errors.
+
+### Presentation notes (from Jesper, 2026-06-08) — honest limitations to state in the deck
+1. CREW DEPENDENCIES ARE NOT MODELLED. The optimizer and twin handle stands, size/zone, handler capacity (as an injectable shortage), passport, baggage, and connections, but crew availability/positioning is out of scope. State this as a known boundary (consistent with the earlier "crew is the honest gap" note). A real system would add crew as a constraint/resource.
+2. TRADE-OFFS / SOFT COSTS ARE DIMENSIONLESS POINTS, not calibrated business value. The MIP picks the set of stands that minimizes total soft cost subject to the hard constraints; the three soft costs are relative cost points. In production they should be modelled as real business value drivers, e.g. passenger satisfaction from metres walked, available dwell/retail time (shopping), and schedule scoring from the fees charged for stands. This is the "calibration is the next step" point made concrete: tie each soft cost to a euro/operational metric so the Pareto trade-off is negotiated in real terms. Pairs with the M365 tokenomics cost note.
+
+## Parallel-review enhancement build (started 2026-06-08)
+Sequential, low-risk-first; each phase verified end-to-end (no console errors, base numbers intact) before the next. Governance invariants kept throughout.
+
+### PHASE A: Config tab (DONE, verified)
+Surfaced the hidden policy constants in one governed `CONFIG` object + a Config tab. Exposed/editable: 3 objective weights, escalation dummy cost (10000), conflict buffer (new, default 0 min, applied via overlapsBuf to the MIP conflict constraints, eligibility, and committed validity), remote penalty (40), oversize sizeGap penalty (8), allow-tow toggle (Phase C, default off), tug fleet (4), bus fleet (4), and the value-panel euro unit costs (Phase E). Refactored DEFAULT_WEIGHTS->CONFIG.weights (kept as a live alias), inline 40/8 in costParts->CONFIG.*, ESCALATE_COST->CONFIG.escalateCost. Each control onchange -> setConfig -> applyConfig (render + re-run Optimize). Reset to defaults restores in place (preserves the weights alias). Verified: base solve byte-identical (z=509.3, EK151->R8, 0 escalations; note the brief's "~540" is pre-departure-blocking, current verified base is 509.3); changing passenger weight to 3 shifts the allocation; reset reproduces base exactly. 4 cards, 14 controls. No console errors.
+
+### PHASE B: Counterfactual in the digital twin (DONE, verified)
+When the twin projects, it now also runs the same sim for the three Pareto corners and a first-come-first-served baseline (fcfsAlloc: greedy by predOn onto first eligible free stand), and renders a comparison table of peak consequence metrics (non-Schengen passport peak, Schengen passport peak, connections at risk, turnarounds slipping, peak handler load). Selected strategy column highlighted; FCFS labelled synthetic baseline; lowest value per row marked. computeCounterfactuals (3 solvePoint + 4 sims) runs in runTwin. Verified strong variation: connections at risk = 96 (protect-passengers) / 140 (protect-handlers) / 147 (protect-schedule) / 96 (FCFS), so the trade-off has a quantified downstream cost. 5 columns, 5 rows, highlight + baseline label confirmed. No console errors.
+
+### Departure escalation messages (DONE, verified 2026-06-08)
+Separate spec from a parallel session: bring the PoC's Escalate-modal to the full-scale app's review-status departure rows. The airport flags and drafts; it never holds or cancels itself.
+- The two review departures (DY1741 CPH-BGO, `watch: 'hold'`; WF402 CPH-BLL, `watch: 'cancel'`) now carry an `Escalate` button in the Flights-tab status cell. Non-review departures would get a lightweight `Acknowledge` (logs only); none exist in the current dataset, so that button does not render (no flight fabricated to force it).
+- Modal (`#modal` overlay, new): recipients line, editable `<textarea>` pre-filled with subject + body, `Copy message` (clipboard API, falls back to execCommand), and `Log escalation`. Logging writes one `escalate` event to the existing event log with an Undo, then jumps to the Event log tab. `state.escalations[fid]` tracks the flag; status pill flips to "Escalated, hold review" / "Escalated, cancellation candidate"; Undo (`undoDepEscalation`) removes the event and clears the flag.
+- Recipients are governance-fixed: HOLD -> airline ops, cc ATC slot coordination only when `slotAffected` (set true on DY1741, consistent with the CTOT line in its message); CANCEL -> airline ops + Network Manager (NMOC).
+- The two row figures (174/141, 64/38) are pax/bags. Both review departures have `conPax: 0`, so the connection sentence is dropped (no fabricated count) and the cancel message uses the passenger figure 64, not the 38 the draft guessed.
+- Sankey note resolved (no code change): the passport-control node already reads the instantaneous queue at the current scrub step (`s = t.steps[t.idx]`, prints `qN waiting`), not a throughput sum. The captured "0 waiting" frame was simply an early step; verified the non-Schengen queue peaks at 309 at 15:20 and the node congests (>200 -> deep blue). Scrubbing to the peak shows it.
+- Verified: 2 Escalate buttons (DY1741, WF402); modal opens with correct recipients + filled message; Copy works; Log writes exactly one event with Undo; Undo reverts state and pill; base solve unchanged (z=509.3, EK151->R8, 0 escalations); no console errors.
+
+### PHASE C: Tow-to-remote + tug/bus fleet capacity (DONE, verified 2026-06-08)
+The largest change. Every addition is gated behind `CONFIG.allowTow`, so tow-off emits today's model exactly (verified byte-identical: z=509.31, EK151->R8, 0 esc, 82 binary vars, no tow/overflow vars, no bounds).
+
+**Scope decision:** tow lives in the main Optimize MIP only, not the Pareto epsilon-constraint sweep. The Pareto front is the verified Phase B centrepiece and a tow binary has no clean single-objective unit there; every Phase C verify criterion is observable on the Optimize tab, its allocation table, and the twin Gantt. Documented as a deliberate boundary.
+
+**Occupancy phase-split (core change).** A towable flight (arr, dwell >= MIN_TOW_DWELL 50) deboards on its contact stand (TOW_DEBOARD 15 min, passengers/bags/handler all count here), is towed to a remote parking position for the parked middle, then returns to board (TOW_BOARD 20 min). `buildOccupancies(alloc, towed)` emits three occ entries (deboard contact / park remote / board contact); the park+board entries carry zero pax and dir 'tow' so passport, handler, belt, and connection logic never double-count. `towed` defaults to empty -> non-towed twin byte-identical.
+
+**MIP.** New binary `tow__<fid>` per towable, coef CONFIG.towCost (20 pts) in the objective. `towlink_<fid>`: tow only if the flight takes a contact stand. Conflict relaxation: for a contact-stand pair whose full windows overlap, towing one aircraft frees the stand's middle, so the constraint becomes `x[i,s] + x[j,s] - tow[i](- tow[j]) <= 1` when towing breaks the overlap (the other flight fits inside the freed gap, `towBreaksOverlap`). Tug/bus capacity: soft overflow vars `tugOver` (>= #tows - tugFleet) and `busOver` (>= #remote-serviced - busFleet, where remote-serviced = tows + flights assigned directly to a remote stand), priced TUG_OVERFLOW_COST 50 / BUS_OVERFLOW_COST 40 per unit over fleet. Explicit GLP_LO bounds on the overflow vars; `lp.bounds` only attached when allowTow.
+
+**Threading.** `towedFromRes`, `lastSolve.towed`, `state.committedTow`, `acceptAllocation(alloc,label,towed)`, `getActiveAllocation` returns towed, `runTwin` passes it. `checkCommittedValid` made tow-aware via `committedStandIntervals` (a towed flight holds the contact stand only for its slivers), so the continuous-revalidation sweep does not flag the two flights sharing a contact stand as a false double-book. Allocation table shows a "Tow -> remote" pill + "frees C24 hh:mm-hh:mm, bus boarding"; solve meta shows "Tows n / tug N" and amber over-fleet chips; Gantt draws dashed bars for tow phases plus dashed connectors from the contact row to the remote parking row and back.
+
+**Demo trigger: injectable "Wide-body parking crunch"** (user-chosen approach; keeps the base byte-identical because the two flights are only appended to FLIGHTS when injected). With the default 40-55 min arrivals no tow is ever beneficial (a tow frees only dwell-35 = up to 20 min, too short for a 45-min arrival to reuse), so the engine correctly never tows. The injection takes E30 out (leaving C24 the only code-E contact stand once B16 is out) and adds two code-E long-haul arrivals both wanting C24: SQ352 (SIN, A359, on-block 15:00, dwell 95, towable) and QR163 (DOH, A359, on-block 15:20, dwell 45). SQ352's on-block was set to 15:00 so it clears the settled SK0501 (holds C24 to 14:55) and so its freed window [15:15,16:15] fully contains QR163 [15:20,16:05]. Verified: tow off -> SQ352 forced to remote R6, z=768.55; tow on -> SQ352 towed and kept on C24, QR163 takes C24, z=687.14 (tow saves ~81 pts); Gantt shows QR163 in the freed C24 gap with SQ352 parked on R6 and the tow connectors; committed picture clean (no false conflict, no spurious supersede); lowering busFleet to 1 raises busOver to 3 and the objective by 120 (proportional saturation cost). No console errors. towCost surfaced in the Config tab.
+
+### PHASE D: Uncertainty handling (DONE, verified 2026-06-08)
+Two parts, both default-off so the base stays byte-identical (verified z=509.31, EK151->R8, 82 vars).
+- **Band-sized conflict buffer.** `pairBuffer(a,b) = confBuffer + bandBufferK * (a.predBand + b.predBand)` and `overlapsBy(...,buf)`, wired into every conflict test (buildModel, buildSingleObjLP, standBlockedFor, checkCommittedValid). New `CONFIG.bandBufferK` (default 0). At 0 the buffer is strict no-overlap (base unchanged); raising it gives wide-uncertainty flights more separation and lets tight-band flights pack closer. Fuzzy Gantt edge: a faint rect spanning [start-predBand, start+predBand] on each arrival bar visualises the band.
+- **Monte Carlo robustness.** `robustness(alloc, towed)` runs 300 seeded draws (mulberry32, fixed seed -> stable score per plan), jittering each flight's on-block within its band, and reports the fraction of conflict-free scenarios plus per-stand fragility. Panel on the Optimize tab. Verified: at the tight default the base plan "Holds in 33%" with fragile stands flagged (E32 51%, B14 34%); raising bandBufferK to 1.5 lifts it to 100% and the objective to 610.41 (slack vs utilisation). So the score drops as the buffer is tightened.
+
+### PHASE E: Bottom-up value panel (DONE, verified 2026-06-08)
+`computeValue(alloc, towed)` against the first-come-first-served baseline, pure allocation arithmetic (no twin, so it is fast and free of the passport-congestion paradox). Line items, each x a CONFIG.unit cost (labelled assumptions): Protected connections (connecting pax on flights FCFS strands but this plan operates), Bus trips avoided (FCFS remote - our remote), Contact-stand-hours gained, minus Tow movements. Panel on the Optimize tab and the Trade-offs selection. Design note: an earlier version used twin connRisk for "protected connections" but that perversely went negative because FCFS's failures (escalating EK151 entirely) remove passengers from the at-risk count; rewrote to escalation-rescue, which is the clean honest driver. Verified: clean base = €0 (optimizer ~= FCFS, honest); stand faults = +€24,033 (FCFS strands the EK151 A380, optimizer rescues it -> 96 protected connections x €250); crunch+tow = +€23,733 (connection protection dwarfs the €600 tow cost); line items reconcile to the net.
+
+### PHASE F: Governance + EU AI Act view (DONE, verified 2026-06-08)
+New "Governance" tab. Limited-risk banner + four cards + posture footer. States: most likely LIMITED-RISK not Annex III high-risk (a read-only advisory allocator is not a safety component of critical infrastructure); what applies at limited-risk (Article 50 transparency on the LLM interface, GPAI obligations on Microsoft as provider not the airport as deployer); the threshold to high-risk is autonomy (write-back to Airhart, auto-cancel/divert) with Article 14 as the design boundary; what binds regardless of tier (GDPR on passenger/connection data, Danish co-determination / works-council consultation); the position (classify honestly, apply Article 14 oversight voluntarily, name the threshold). Static content, lowest risk. This is also the deck governance slide. Verified: tab active, all required elements present.
+
+### PHASE G: Rolling horizon (DONE, verified 2026-06-08)
+`buildModel(weights, glpk, opts)` gains an optional stability term: when `opts.stability` (a map of committed stands) is passed, every off-committed-stand option for a committed flight gets +CONFIG.stabilityPenalty (default 30), so the solver keeps committed stands unless a move beats the penalty. Gated -> base byte-identical. "Advance 5 min and re-optimize" button on the Optimize tab: advances the clock one SIM_STEP and re-solves seeded from the committed picture, then shows a roll-note with held/changed counts. Human-in-the-loop preserved (re-solve is shown for acceptance, not auto-committed). Verified: advancing holds all 8 committed stands (0 churn) and advances the clock 5 min; and the term bites, when weights change so a from-scratch re-solve would move 2 flights, the stability-seeded solve holds all committed stands (0 changed), while a move saving more than the penalty would still happen.
+
+All of Phase A-G complete. Config tab now exposes: 3 weights, escalation cost, conflict buffer, uncertainty buffer factor (D), rolling stability penalty (G), remote/oversize penalties, allow-tow + tow cost + tug/bus fleet (C), and the 4 euro unit costs (E). No console errors across all phases; base solve byte-identical with every phase defaulting off.
+
+### Documentation update (DONE, verified 2026-06-08)
+- Solution Overview and Assumptions.md: scope (tow/fleet, uncertainty, value, rolling added), EU AI Act section refined to the limited-risk position (Phase F), new Section 11 (full-scale capabilities), three new limitations (Pareto-corner spacing, FCFS value baseline, tow-needs-contention).
+- deck/deck.html: removed crew from the covered-dependency line; reconciled the disrupted stand to B16 throughout (worked example now B16-out -> B14 destination; assumptions card B16-udfald); added crew and Pareto-corner scope cards (assumptions slide now 3x2); rewrote the governance slide to the Phase F position (limited-risk not Annex III, autonomy threshold, Art 50 + GPAI on Microsoft, GDPR + samarbejdsudvalg); added a new full-scale appendix slide "Hvorfor en solver, ikke en regelmotor" (incumbent comparison + NP-hardness + the new capabilities). 16 slides, verified rendering. PDF regenerated via headless Chrome (16 pages).
+
+### Adversarial review + fixes (DONE, verified 2026-06-08)
+Ran an adversarial code review and user-level testing (config extremes, all disruptions combined, repeated rolling, Play feed, real UI clicks). No crashes, governance invariants intact. Findings and dispositions:
+- FIXED: stale `state.committedTow` after `undoCommit` (undoing a towed flight left it in the towed set). Now `undoCommit` deletes from committedTow. Supersede/restore keep the flight committed, so no change needed there; Pareto accept already clears the set.
+- FIXED (positioning): rolling roll-note reframed so "0 changed" reads as the stability term working (no new information -> plan stable by design), not the feature doing nothing.
+- FIXED (positioning): value panel subtitle names the baseline as "the naive first-come-first-served rule an incumbent allocator would run", to pre-empt the strawman critique (its headline EK151 rescue depends on FCFS greedily filling R8).
+- DOCUMENTED: towed aircraft do not reserve a remote position in the optimizer (bounded only by the bus/tug soft cost, not a hard remote-stand count); added to the limitations. Narrow at demo scale.
+- NOT CHANGED (optional hardening, noted only): double-tow-on-one-stand sliver edge; robustness Monte Carlo (300 draws) recomputing inside render() on every tick (~6ms, compute lazily per active tab if it ever matters).
+- Confirmed test artifact (not a real bug): the escalate modal "didn't open" under synthetic preview clicks because the click release landed on the just-shown full-screen overlay and its click-to-dismiss fired; real single clicks target the button before the overlay exists.
