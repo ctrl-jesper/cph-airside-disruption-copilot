@@ -159,6 +159,18 @@
   .value-tbl .vtot td { border-bottom: none; border-top: 2px solid var(--evening); padding-top: 8px; font-weight: 700; color: var(--midnight); }
   .value-tbl .vtot .vv { color: var(--evening); font-size: 15px; }
 
+  .value-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .vseg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .vseg button { border: none; background: var(--card); color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 6px 13px; cursor: pointer; }
+  .vseg button.on { background: var(--midnight); color: #fff; }
+  .vcases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+  @media (max-width: 1100px) { .vcases { grid-template-columns: repeat(2, 1fr); } }
+  .vcase { display: flex; gap: 10px; align-items: flex-start; background: var(--card); border: 1px solid var(--border); border-radius: 11px; padding: 12px 13px; box-shadow: var(--shadow); }
+  .vc-dot { width: 11px; height: 11px; border-radius: 3px; margin-top: 4px; flex: 0 0 auto; }
+  .vc-l { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .vc-n { font-size: 19px; font-weight: 700; color: var(--midnight); font-variant-numeric: tabular-nums; }
+  .vc-s { font-size: 11.5px; color: var(--twilight); }
+
   .gov-banner { display: flex; gap: 16px; align-items: center; background: var(--horizon); border: 1px solid var(--sky); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
   .gov-tier { flex: 0 0 auto; background: var(--midnight); color: #fff; font-weight: 700; font-size: 15px; padding: 10px 16px; border-radius: 10px; letter-spacing: 0.3px; }
   .gov-tier-x { font-size: 13.5px; color: var(--ink); line-height: 1.5; }
@@ -420,6 +432,7 @@
       <div class="tab" data-tab="pareto" onclick="showTab('pareto')">Trade-offs</div>
       <div class="tab" data-tab="changes" onclick="showTab('changes')">Event log<span class="pill-n" id="changesTabN">0</span></div>
       <div class="tab" data-tab="twin" onclick="showTab('twin')">Digital twin</div>
+      <div class="tab" data-tab="value" onclick="showTab('value')">Value</div>
       <div class="tab" data-tab="gov" onclick="showTab('gov')">Governance</div>
       <div class="tab" data-tab="defs" onclick="showTab('defs')">Definitions</div>
       <div class="tab" data-tab="config" onclick="showTab('config')">Config</div>
@@ -481,6 +494,12 @@
       <button class="btn-primary" id="twinBtn" onclick="runTwin()">Project the chosen strategy forward</button>
 
       <div id="twinUI"></div>
+    </section>
+
+    <section class="tabpane" id="pane-value">
+      <p class="opt-intro">The same disruption, four ways of running the apron. <b>Base</b> does nothing. <b>A</b> optimizes once on the initial picture. <b>B</b> keeps re-optimizing as the picture changes. <b>C</b> re-optimizes and shifts the trade-off to whichever resource is closest to maxing out. The digital twin scores every policy against the same reality, and the cost of the afternoon is integrated in euros. The gap between the curves is the value of optimizing, of optimizing continuously, and of optimizing adaptively.</p>
+      <button class="btn-primary" id="valueBtn" onclick="runValueCases()">Compute value cases</button>
+      <div id="valueUI" style="margin-top:14px"></div>
     </section>
 
     <section class="tabpane" id="pane-gov">
@@ -1727,6 +1746,184 @@ function renderValuePanel(elId, alloc, towed) {
     '<p class="cap">Unit costs are assumptions set in the Config tab, not calibrated figures.</p></div>';
 }
 
+/* ===================== Value tab: cost over time, four policies =====================
+   The same disruption reality (a stand fault, E30 and C26) is fed to four operating
+   policies. Base does nothing; A optimizes once on the initial picture and is blind to
+   the fault; B re-optimizes on the current picture; C re-optimizes and shifts weight to
+   the binding resource. The digital twin judges every policy against full reality, and
+   the cost is integrated over the afternoon in euros. Drivers and units are assumptions. */
+const VALUE = { eurDelayMin: 100, eurReaccom: 40 };   // delay-minute (EUROCONTROL ref); per-pax reaccommodation
+const VALUE_CASES = [
+  { id: 'base', label: 'Base · do nothing', color: '#c4bfbb' },
+  { id: 'A', label: 'A · optimize once', color: '#88a8ed' },
+  { id: 'B', label: 'B · keep optimizing', color: '#4e55ab' },
+  { id: 'C', label: 'C · optimize + adapt', color: '#170d81' },
+];
+let valueResult = null, valueMode = 'cum', valueMC = null;
+
+async function valueSolve(weights, disrupt) {
+  const glpk = await window.__glpkReady;
+  const saved = state.disruptions;
+  state.disruptions = { standFaults: false, handlerShortage: false, standCrunch: false, ...disrupt };
+  try {
+    const m = buildModel(weights, glpk);
+    const lp = { name: 'v', objective: { direction: glpk.GLP_MIN, name: 'c', vars: m.objVars }, subjectTo: m.subjectTo, binaries: m.binaries };
+    if (m.bounds) lp.bounds = m.bounds;
+    const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+    return { alloc: allocFromRes(res), towed: towedFromRes(res) };
+  } finally { state.disruptions = saved; }
+}
+
+function valueBaseAlloc() {   // each flight on its planned stand, no optimization
+  const a = {}; reallocFlights().forEach(f => { a[f.id] = f.plannedStand || 'ESC'; }); return a;
+}
+
+// Weights that emphasise whichever reallocation-relievable resource is closest to saturating.
+function bindingWeights(sim) {
+  const qPeak = Math.max(0, ...sim.steps.map(s => Math.max(s.qN / PASSPORT_CAP.N, s.qS / PASSPORT_CAP.S)));
+  const sched = sim.slips / Math.max(1, reallocFlights().length);
+  const binding = qPeak >= sched ? 'passenger' : 'schedule';
+  const w = { passenger: 1, handler: 1, schedule: 1 }; w[binding] = 3;
+  return { weights: w, binding };
+}
+
+// Cost events for one policy, judged against full reality (the stand fault active).
+function valueCostEvents(alloc, towed) {
+  const saved = state.disruptions;
+  state.disruptions = { standFaults: true, handlerShortage: false, standCrunch: false };
+  const u = CONFIG.unit, events = [];
+  try {
+    const realAlloc = {}, stranded = new Set();
+    reallocFlights().forEach(f => {
+      const sid = alloc[f.id], s = sid && sid !== 'ESC' ? standById(sid) : null;
+      if (!s || isStandOOS(s) || CODE_NUM[s.code] < CODE_NUM[f.code]) {
+        stranded.add(f.id); realAlloc[f.id] = 'ESC';
+        events.push({ t: f.predOn, eur: (f.conPax || 0) * u.connection + (f.pax || 0) * VALUE.eurReaccom, kind: 'strand' });
+      } else realAlloc[f.id] = sid;
+    });
+    const realTowed = new Set([...(towed || [])].filter(id => !stranded.has(id)));
+    const sim = simulateTwin(realAlloc, realTowed);
+    reallocFlights().forEach(f => {
+      const sid = realAlloc[f.id]; if (sid === 'ESC') return;
+      if (standById(sid).type === 'remote') events.push({ t: f.predOn, eur: u.busTrip, kind: 'bus' });
+      if (realTowed.has(f.id)) events.push({ t: f.predOn, eur: u.tow, kind: 'tow' });
+    });
+    (sim.riskFlights || []).forEach(r => { if (!stranded.has(r.fid)) events.push({ t: r.t, eur: (r.conPax || 0) * u.connection, kind: 'conn' }); });
+    sim.occ.filter(o => o.extended > 0 && o.dir === 'arr').forEach(o => events.push({ t: o.baseEnd, eur: o.extended * VALUE.eurDelayMin, kind: 'slip' }));
+  } finally { state.disruptions = saved; }
+  events.sort((a, b) => a.t - b.t);
+  return events;
+}
+
+// Cumulative and per-step euro curves sampled at the twin's time steps.
+function valueCurve(events) {
+  const xs = []; for (let t = SIM_T0; t <= SIM_T1; t += SIM_STEP) xs.push(t);
+  let run = 0, i = 0; const cum = [], rate = [];
+  xs.forEach(t => { let e = 0; while (i < events.length && events[i].t <= t) { run += events[i].eur; e += events[i].eur; i++; } cum.push(run); rate.push(e); });
+  return { xs, cum, rate, total: run };
+}
+
+async function valuePolicyAllocs() {
+  const base = { alloc: valueBaseAlloc(), towed: new Set() };
+  const A = await valueSolve(DEFAULT_WEIGHTS, {});                    // initial picture, blind to the fault
+  const B = await valueSolve(DEFAULT_WEIGHTS, { standFaults: true }); // current picture
+  const saved = state.disruptions;
+  state.disruptions = { standFaults: true, handlerShortage: false, standCrunch: false };
+  const bind = bindingWeights(simulateTwin(B.alloc, B.towed));
+  state.disruptions = saved;
+  const C = await valueSolve(bind.weights, { standFaults: true });    // current picture + adapt to binding resource
+  return { policies: { base, A, B, C }, binding: bind.binding };
+}
+
+async function runValueCases() {
+  const btn = document.getElementById('valueBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Computing…'; }
+  try {
+    const { policies, binding } = await valuePolicyAllocs();
+    valueResult = VALUE_CASES.map(c => {
+      const p = policies[c.id], events = valueCostEvents(p.alloc, p.towed);
+      return { ...c, alloc: p.alloc, towed: p.towed, events, curve: valueCurve(events) };
+    });
+    valueResult.binding = binding;
+    valueMC = null;
+    renderValueView();
+  } catch (e) { console.error(e); const el = document.getElementById('valueUI'); if (el) el.innerHTML = '<p class="empty">Compute error: ' + (e.message || e) + '</p>'; }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Recompute cases'; } }
+}
+
+// Monte Carlo: hold the four allocations fixed, vary arrival times within each band, re-cost.
+async function runValueMonteCarlo() {
+  if (!valueResult) return;
+  const btn = document.getElementById('valueMcBtn'); if (btn) { btn.disabled = true; btn.textContent = 'Sampling…'; }
+  const draws = 50, rng = mulberry32(20260612);
+  const orig = {}; reallocFlights().forEach(f => orig[f.id] = f.predOn);
+  const per = valueResult.map(() => ({ cum: [], totals: [] }));
+  try {
+    for (let d = 0; d < draws; d++) {
+      reallocFlights().forEach(f => { f.predOn = orig[f.id] + Math.round((rng() * 2 - 1) * (f.predBand || 0)); });
+      valueResult.forEach((c, ci) => { const cu = valueCurve(valueCostEvents(c.alloc, c.towed)); per[ci].cum.push(cu.cum); per[ci].totals.push(cu.total); });
+    }
+  } finally { reallocFlights().forEach(f => f.predOn = orig[f.id]); if (btn) { btn.disabled = false; btn.textContent = 'Re-run Monte Carlo'; } }
+  const pct = (arr, p) => { const s = arr.slice().sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; };
+  const n = valueResult[0].curve.xs.length;
+  valueMC = valueResult.map((c, ci) => {
+    const lo = [], hi = [], mean = [];
+    for (let k = 0; k < n; k++) { const col = per[ci].cum.map(r => r[k]); lo.push(pct(col, 10)); hi.push(pct(col, 90)); mean.push(col.reduce((a, b) => a + b, 0) / col.length); }
+    return { lo, hi, mean, meanTotal: per[ci].totals.reduce((a, b) => a + b, 0) / draws };
+  });
+  const baseTot = per[0].totals, cTot = per[3].totals;
+  valueMC.cBeatsBase = Math.round(cTot.filter((v, i) => v < baseTot[i]).length / draws * 100);
+  valueMC.draws = draws;
+  renderValueView();
+}
+
+function setValueMode(m) { valueMode = m; renderValueView(); }
+
+function renderValueView() {
+  const el = document.getElementById('valueUI'); if (!el) return;
+  if (!valueResult) { el.innerHTML = '<p class="cap">Click <b>Compute value cases</b> to run the four operating policies against the same disruption and chart their cost over the afternoon.</p>'; return; }
+  const metric = valueMode;
+  const W = 900, H = 360, pl = 64, pb = 44, pt = 16, pr = 132;
+  const xs = valueResult[0].curve.xs;
+  const vals = valueResult.flatMap(c => c.curve[metric]).concat(valueMC ? valueMC.flatMap(m => m.hi) : []);
+  const ymax = Math.max(1, ...vals);
+  const sx = t => pl + (t - SIM_T0) / (SIM_T1 - SIM_T0) * (W - pl - pr);
+  const sy = v => (H - pb) - v / ymax * (H - pb - pt);
+  let svg = '';
+  for (let gy = 0; gy <= 4; gy++) { const v = ymax * gy / 4, y = sy(v); svg += '<line x1="' + pl + '" y1="' + y.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + y.toFixed(1) + '" stroke="#eef2fa"/><text x="' + (pl - 8) + '" y="' + (y + 3).toFixed(1) + '" font-size="10" fill="#6b7299" text-anchor="end">' + eur(v) + '</text>'; }
+  for (let tk = SIM_T0; tk <= SIM_T1; tk += 30) svg += '<text x="' + sx(tk).toFixed(1) + '" y="' + (H - pb + 16) + '" font-size="10" fill="#6b7299" text-anchor="middle">' + fmt(tk) + '</text>';
+  if (valueMC) valueResult.forEach((c, ci) => {
+    const m = valueMC[ci]; let up = '', dn = '';
+    xs.forEach((t, k) => { up += sx(t).toFixed(1) + ',' + sy(metric === 'cum' ? m.hi[k] : c.curve.rate[k]).toFixed(1) + ' '; });
+    for (let k = xs.length - 1; k >= 0; k--) up += sx(xs[k]).toFixed(1) + ',' + sy(metric === 'cum' ? m.lo[k] : c.curve.rate[k]).toFixed(1) + ' ';
+    if (metric === 'cum') svg += '<polygon points="' + up + '" fill="' + c.color + '" fill-opacity="0.12"/>';
+  });
+  valueResult.forEach(c => {
+    const pts = xs.map((t, k) => sx(t).toFixed(1) + ',' + sy(c.curve[metric][k]).toFixed(1)).join(' ');
+    svg += '<polyline points="' + pts + '" fill="none" stroke="' + c.color + '" stroke-width="2.4"/>';
+  });
+  svg += '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/><line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/>';
+  svg += '<text x="14" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 14 ' + (H / 2) + ')">' + (metric === 'cum' ? 'Cumulative cost (€)' : 'Cost rate (€ / 5 min)') + '</text>';
+  valueResult.forEach((c, i) => { const ly = pt + 8 + i * 20, lx = W - pr + 12; svg += '<line x1="' + lx + '" y1="' + ly + '" x2="' + (lx + 18) + '" y2="' + ly + '" stroke="' + c.color + '" stroke-width="3"/><text x="' + (lx + 24) + '" y="' + (ly + 4) + '" font-size="11" fill="#1b2350">' + c.label + '</text>'; });
+
+  const baseTot = valueResult[0].curve.total;
+  const cards = valueResult.map(c => {
+    const save = baseTot - c.curve.total;
+    const sub = c.id === 'base' ? 'the do-nothing baseline'
+      : 'saves ' + eur(save) + ' vs do nothing' + (valueMC ? ' · exp. ' + eur(baseTot - valueMC[valueResult.indexOf(c)].meanTotal) : '');
+    return '<div class="vcase"><div class="vc-dot" style="background:' + c.color + '"></div><div><div class="vc-l">' + c.label + '</div>' +
+      '<div class="vc-n">' + eur(c.curve.total) + '</div><div class="vc-s">' + sub + '</div></div></div>';
+  }).join('');
+
+  el.innerHTML =
+    '<div class="value-controls"><div class="vseg"><button class="' + (valueMode === 'cum' ? 'on' : '') + '" onclick="setValueMode(\'cum\')">Cumulative €</button>' +
+    '<button class="' + (valueMode === 'rate' ? 'on' : '') + '" onclick="setValueMode(\'rate\')">Cost rate</button></div>' +
+    '<button class="btn-ghost" id="valueMcBtn" onclick="runValueMonteCarlo()">' + (valueMC ? 'Re-run Monte Carlo' : 'Add Monte Carlo band') + '</button>' +
+    (valueMC ? '<span class="chip ok">Case C beats Base in <b>' + valueMC.cBeatsBase + '%</b> of ' + valueMC.draws + ' scenarios</span>' : '') + '</div>' +
+    '<div class="gantt-box"><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:380px">' + svg + '</svg></div>' +
+    '<div class="vcases">' + cards + '</div>' +
+    '<p class="cap">All four policies face the same reality: a stand fault (E30, C26). Case A optimizes once before the fault is known, so the twin catches its plan on failed stands; B and C re-optimize against the current picture, and C shifts weight to the binding resource (' + (valueResult.binding || 'passenger') + '). The twin judges every policy against full reality. Cost drivers (€' + CONFIG.unit.connection + '/connection, €' + VALUE.eurDelayMin + '/delay-minute, €' + CONFIG.unit.busTrip + '/bus, €' + CONFIG.unit.tow + '/tow) are assumptions set in Config.</p>';
+}
+
 /* ----------------------- Pareto trade-off front -----------------------
    The three objectives conflict, so there is no single optimum. The front
    is traced with an epsilon-constraint sweep over the same MIP: minimize
@@ -2550,6 +2747,7 @@ const PANE_TITLES = {
   pareto: ['Trade-off front', 'Non-dominated strategies, the human chooses which to accept'],
   changes: ['Event log', 'Decisions, strategy changes, and picture changes, continuously revalidated against the live picture'],
   twin: ['Digital twin', 'Project the chosen allocation forward to reveal the cascade'],
+  value: ['Business value over time', 'Four operating policies against the same disruption, cost integrated in euros'],
   gov: ['Governance and EU AI Act', 'How the system is classified and what keeps it compliant'],
   defs: ['Definitions', 'The concepts, scores, and units behind the solution'],
   config: ['Config', 'Governed policy constants. A change re-runs the optimization. Defaults reproduce the base scenario'],
