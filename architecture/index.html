@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CPH Airside Copilot — Target architecture on the Microsoft stack</title>
+<style>
+  @font-face {
+    font-family: 'CPH Airfield';
+    src: url('assets/fonts/CphAirfield-Positive.otf') format('opentype');
+    font-weight: 400; font-display: swap;
+  }
+  @font-face {
+    font-family: 'Open Sans';
+    src: url('assets/fonts/OpenSans-Regular.ttf') format('truetype');
+    font-weight: 400; font-display: swap;
+  }
+  @font-face {
+    font-family: 'Open Sans';
+    src: url('assets/fonts/OpenSans-SemiBold.ttf') format('truetype');
+    font-weight: 600; font-display: swap;
+  }
+  @font-face {
+    font-family: 'Open Sans';
+    src: url('assets/fonts/OpenSans-Bold.ttf') format('truetype');
+    font-weight: 700; font-display: swap;
+  }
+
+  :root {
+    --midnight:#060e4d; --ink:#1b2350; --evening:#170d81; --twilight:#4e55ab;
+    --sky:#88a8ed; --horizon:#dce7f7; --sunrise:#ffdd66; --sunshine:#fef9d8;
+    --muted:#6b7299; --border:#e6e2dc; --card:#fcfbfa; --bg:#eef2fa;
+    --you:#f6b800; --digital:#3f6fd6; --science:#6a4fb3; --gov:#7a8199;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background-color: #eef2fa;
+    background-image:
+      linear-gradient(to right, rgba(6,14,77,.030) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(6,14,77,.030) 1px, transparent 1px),
+      radial-gradient(130% 90% at 12% -6%, #f4f8ff 0%, rgba(244,248,255,0) 52%),
+      linear-gradient(168deg, var(--horizon) 0%, #eef2fa 40%, #fbfcff 100%);
+    background-size: 46px 46px, 46px 46px, 100% 100%, 100% 100%;
+    background-repeat: repeat, repeat, no-repeat, no-repeat;
+    color: var(--ink);
+    font-family: 'Open Sans', -apple-system, "Segoe UI", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  .sheet {
+    position: relative;
+    width: min(1320px, 96vw);
+    margin: 26px auto 56px;
+    padding: 0 22px;
+  }
+  .sheet > * { position: relative; z-index: 1; }
+
+  /* ---------- header ---------- */
+  header.top {
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:24px; padding-bottom:16px; border-bottom:1.5px solid rgba(6,14,77,.14);
+    margin-bottom:20px;
+    animation: rise .5s ease both;
+  }
+  .eyebrow {
+    font-size:11px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--twilight); font-weight:700; margin-bottom:10px;
+  }
+  h1 {
+    font-family:'CPH Airfield','Open Sans',sans-serif;
+    font-weight:400; color:var(--midnight);
+    font-size: clamp(26px, 3vw, 40px); line-height:1.02; letter-spacing:.005em;
+  }
+  h1 .accent { color:var(--evening); }
+  .sub { margin-top:10px; max-width:760px; color:var(--muted); font-size:14px; line-height:1.5; }
+  .wordmark { text-align:right; flex:0 0 auto; }
+  .wordmark img { height:30px; opacity:.92; }
+  .wordmark .tag { margin-top:8px; font-size:11px; color:var(--muted); letter-spacing:.04em; }
+
+  /* ---------- legend ---------- */
+  .legend {
+    display:flex; flex-wrap:wrap; gap:10px 26px; align-items:center;
+    padding:12px 16px; margin-bottom:22px;
+    background:rgba(252,251,250,.7); border:1px solid var(--border); border-radius:12px;
+    backdrop-filter: blur(2px);
+    animation: rise .5s ease .05s both;
+  }
+  .legend .grp { display:flex; align-items:center; gap:14px; }
+  .legend .lbl { font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:700; }
+  .key { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink); }
+  .dot { width:11px; height:11px; border-radius:50%; flex:0 0 auto; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+  .dot.you{background:var(--you)} .dot.digital{background:var(--digital)}
+  .dot.science{background:var(--science)} .dot.gov{background:var(--gov)}
+  .chip {
+    font-size:10.5px; font-weight:700; letter-spacing:.04em; padding:3px 9px; border-radius:999px;
+    border:1px solid transparent; white-space:nowrap;
+  }
+  .chip.poc { background:#e4edff; color:#244a9e; border-color:#cfe0ff; }
+  .chip.full { background:transparent; color:var(--midnight); border-color:rgba(6,14,77,.4); }
+
+  .vsep { width:1px; align-self:stretch; background:rgba(6,14,77,.12); }
+
+  /* ---------- flow ---------- */
+  .flow {
+    display:grid;
+    grid-template-columns: 0.92fr 30px 1.42fr 30px 1fr 30px 0.78fr;
+    align-items:stretch; gap:0;
+  }
+  .col { display:flex; flex-direction:column; min-width:0; }
+  .col-1{animation:rise .5s ease .10s both} .col-2{animation:rise .5s ease .18s both}
+  .col-3{animation:rise .5s ease .26s both} .col-4{animation:rise .5s ease .34s both}
+
+  .rail {
+    display:flex; align-items:center; gap:8px; margin-bottom:12px;
+  }
+  .rail b {
+    font-family:'CPH Airfield','Open Sans',sans-serif; font-weight:400;
+    font-size:14px; letter-spacing:.06em; text-transform:uppercase; color:var(--midnight);
+  }
+  .rail .platform { font-size:10px; color:var(--muted); letter-spacing:.05em; }
+  .rail .bar { height:3px; flex:1; border-radius:2px; }
+  .rail.s .bar{ background:linear-gradient(90deg,var(--muted),transparent) }
+  .rail.az .bar{ background:linear-gradient(90deg,var(--evening),rgba(23,13,129,.15)) }
+  .rail.pp .bar{ background:linear-gradient(90deg,#2f7d4f,rgba(47,125,79,.15)) }
+  .rail.de .bar{ background:linear-gradient(90deg,var(--you),rgba(246,184,0,.12)) }
+
+  .cards { display:flex; flex-direction:column; gap:11px; flex:1; }
+
+  .node {
+    position:relative; background:var(--card); border:1px solid var(--border);
+    border-radius:13px; padding:12px 13px 12px 15px;
+    box-shadow: 0 1px 0 rgba(6,14,77,.04), 0 10px 24px -20px rgba(6,14,77,.55);
+    transition: transform .16s ease, box-shadow .16s ease;
+  }
+  .node::before {
+    content:""; position:absolute; left:0; top:11px; bottom:11px; width:3.5px; border-radius:3px;
+    background:var(--gov);
+  }
+  .node.own-you::before{background:var(--you)} .node.own-digital::before{background:var(--digital)}
+  .node.own-science::before{background:var(--science)} .node.own-gov::before{background:var(--gov)}
+  .node:hover{ transform: translateY(-2px); box-shadow: 0 1px 0 rgba(6,14,77,.04), 0 18px 30px -20px rgba(6,14,77,.6); }
+
+  .node .svc { font-size:13.5px; font-weight:700; color:var(--midnight); letter-spacing:.005em; }
+  .node .role { font-size:11.5px; color:var(--muted); line-height:1.42; margin-top:3px; }
+  .node .meta { display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; align-items:center; }
+  .node .stage {
+    font-size:9.5px; font-weight:700; letter-spacing:.05em; padding:2px 7px; border-radius:999px;
+  }
+  .stage.poc{ background:#e4edff; color:#244a9e; }
+  .stage.full{ background:#fff; color:var(--midnight); box-shadow: inset 0 0 0 1px rgba(6,14,77,.32); }
+
+  /* source nodes a touch quieter */
+  .node.src { background:linear-gradient(180deg,#fbfcff,#f3f6fd); }
+  .node.src .svc{ color:var(--ink); }
+
+  /* keystone */
+  .node.keystone {
+    background:
+      linear-gradient(180deg, #fffdf3 0%, #fffae4 100%);
+    border-color:#f0d780;
+    box-shadow: 0 0 0 1px rgba(246,184,0,.25), 0 18px 34px -22px rgba(110,80,0,.5);
+  }
+  .node.keystone::after {
+    content:"KEYSTONE"; position:absolute; top:-9px; right:12px;
+    font-size:9px; font-weight:800; letter-spacing:.14em; color:#7a5a00;
+    background:var(--sunrise); padding:2px 8px; border-radius:999px;
+    box-shadow:0 2px 6px -2px rgba(110,80,0,.5);
+  }
+  .node.keystone .svc{ color:#3a2c00; }
+  .node.keystone .role{ color:#6a5320; }
+
+  /* arrows between columns */
+  .arrow { display:flex; align-items:center; justify-content:center; }
+  .arrow svg{ width:26px; height:26px; }
+  .arrow .ln{ stroke:var(--twilight); stroke-width:2; }
+  .arrow .hd{ fill:var(--twilight); }
+  .arrow.bidi .ln{ stroke:var(--you); }
+  .arrow.bidi .hd{ fill:var(--you); }
+
+  /* loop caption under azure<->power */
+  .loop {
+    grid-column: 3 / 6; margin-top:12px;
+    display:flex; align-items:center; gap:10px;
+    font-size:11px; color:var(--ink);
+    background:rgba(255,221,102,.16); border:1px dashed #e6c75a; border-radius:10px;
+    padding:8px 13px;
+  }
+  .loop b{ color:#7a5a00; }
+  .loop .seq{ color:var(--muted); }
+  .loop .seq strong{ color:var(--ink); font-weight:700; }
+
+  /* ---------- governance foundation ---------- */
+  .foundation {
+    margin-top:18px; border:1px solid var(--border); border-radius:14px; overflow:hidden;
+    animation:rise .5s ease .4s both;
+  }
+  .foundation .head {
+    display:flex; align-items:center; gap:10px; padding:9px 16px;
+    background:linear-gradient(90deg, var(--midnight), var(--evening));
+    color:#eaf0ff;
+  }
+  .foundation .head b{ font-family:'CPH Airfield','Open Sans',sans-serif; font-weight:400; font-size:13px; letter-spacing:.07em; text-transform:uppercase; }
+  .foundation .head span{ font-size:11px; color:#b9c6f2; }
+  .foundation .row {
+    display:grid; grid-template-columns:repeat(5,1fr); gap:0;
+    background:rgba(252,251,250,.6);
+  }
+  .gcell{ padding:11px 15px; border-right:1px solid var(--border); }
+  .gcell:last-child{ border-right:none; }
+  .gcell .g-svc{ font-size:12.5px; font-weight:700; color:var(--midnight); }
+  .gcell .g-role{ font-size:11px; color:var(--muted); margin-top:2px; line-height:1.4; }
+
+  /* ---------- migration sequence ---------- */
+  .seqstrip {
+    margin-top:20px; display:grid; grid-template-columns:repeat(4,1fr); gap:12px;
+    animation:rise .5s ease .46s both;
+  }
+  .step {
+    position:relative; background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:13px 14px 13px 16px;
+  }
+  .step .n {
+    font-family:'CPH Airfield','Open Sans',sans-serif; font-weight:400;
+    font-size:22px; color:var(--sky); line-height:1;
+  }
+  .step.cur .n{ color:var(--evening); }
+  .step .t{ font-size:12.5px; font-weight:700; color:var(--midnight); margin-top:6px; }
+  .step .d{ font-size:11px; color:var(--muted); margin-top:3px; line-height:1.42; }
+  .step .when{ font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--twilight); margin-top:8px; display:block; }
+
+  footer.note {
+    margin-top:22px; display:flex; justify-content:space-between; align-items:center; gap:18px;
+    font-size:10.5px; color:var(--muted); border-top:1px solid rgba(6,14,77,.12); padding-top:12px;
+  }
+  footer.note .right{ text-align:right; }
+
+  @keyframes rise { from{ opacity:0; transform: translateY(10px);} to{ opacity:1; transform:none; } }
+
+  @media (max-width: 980px){
+    .flow{ grid-template-columns:1fr; }
+    .flow .arrow{ display:none; }
+    .col{ margin-bottom:18px; }
+    .loop{ grid-column:auto; }
+    .foundation .row{ grid-template-columns:1fr 1fr; }
+    .gcell{ border-bottom:1px solid var(--border); }
+    .seqstrip{ grid-template-columns:1fr 1fr; }
+  }
+  @media print {
+    html,body{ background:#fff; }
+    .sheet::before{ display:none; }
+    .node:hover{ transform:none; }
+    *{ animation:none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="top">
+    <div>
+      <div class="eyebrow">PoC versus full scale · Microsoft-first target state</div>
+      <h1>Airside Disruption Copilot<br><span class="accent">target architecture on the Microsoft stack</span></h1>
+      <p class="sub">The proof of concept runs today as a self-contained app. The production system is the same logic, re-homed on CPH's own tenant: Azure carries the data and the compute, Power Platform carries the experience, and a person always decides. The conversational agent explains; it never allocates.</p>
+    </div>
+    <div class="wordmark">
+      <img src="assets/CPH_Logo_Wordmark_Midnight_Blue_RGB.png" alt="Københavns Lufthavne" />
+      <div class="tag">Independent worked solution · synthetic data</div>
+    </div>
+  </header>
+
+  <div class="legend">
+    <div class="grp">
+      <span class="lbl">Ownership</span>
+      <span class="key"><span class="dot you"></span>I build this</span>
+      <span class="key"><span class="dot digital"></span>Digital · integration</span>
+      <span class="key"><span class="dot science"></span>Data &amp; AI · science</span>
+      <span class="key"><span class="dot gov"></span>Governance · legal</span>
+    </div>
+    <div class="vsep"></div>
+    <div class="grp">
+      <span class="lbl">Stage</span>
+      <span class="chip poc">PoC today</span>
+      <span class="chip full">Full scale</span>
+    </div>
+  </div>
+
+  <!-- ============ FLOW ============ -->
+  <div class="flow">
+
+    <!-- Column 1: Sources -->
+    <div class="col col-1">
+      <div class="rail s"><b>Sources</b><span class="bar"></span></div>
+      <div class="cards">
+        <div class="node src own-digital">
+          <div class="svc">Airhart (AODB)</div>
+          <div class="role">Stands, flights, assignments, status. The system of record Operations runs on.</div>
+          <div class="meta"><span class="stage full">governed read-only</span></div>
+        </div>
+        <div class="node src own-science">
+          <div class="svc">A-CDM history &amp; live</div>
+          <div class="role">Milestone timings that train the prediction model and feed the live picture.</div>
+          <div class="meta"><span class="stage full">data feed</span></div>
+        </div>
+        <div class="node src own-digital">
+          <div class="svc">Stand, asset &amp; handler status</div>
+          <div class="role">Out-of-service events, jetbridge faults, handler capacity signals.</div>
+          <div class="meta"><span class="stage full">event source</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"><svg viewBox="0 0 26 26"><line class="ln" x1="2" y1="13" x2="20" y2="13"/><polygon class="hd" points="18,8 26,13 18,18"/></svg></div>
+
+    <!-- Column 2: Azure -->
+    <div class="col col-2">
+      <div class="rail az"><b>Data &amp; intelligence</b><span class="platform">· Azure</span><span class="bar"></span></div>
+      <div class="cards">
+        <div class="node own-digital">
+          <div class="svc">Ingestion &amp; streaming</div>
+          <div class="role">Azure Functions + API Management for the governed read; Event Hubs for the live event stream.</div>
+          <div class="meta"><span class="stage poc">synthetic now</span><span class="stage full">Azure</span></div>
+        </div>
+        <div class="node own-digital">
+          <div class="svc">Operating picture &amp; audit store</div>
+          <div class="role">Dataverse (or Azure SQL): the current apron state, the decision log, full history.</div>
+          <div class="meta"><span class="stage full">Dataverse</span></div>
+        </div>
+        <div class="node own-science">
+          <div class="svc">Timing model</div>
+          <div class="role">Azure ML model trained on A-CDM predicts on-block times and uncertainty. This is the genuine ML.</div>
+          <div class="meta"><span class="stage poc">hand-set stand-in</span><span class="stage full">Azure ML</span></div>
+        </div>
+        <div class="node keystone own-you">
+          <div class="svc">Decision engine — solver + downstream projection</div>
+          <div class="role">MIP allocation, Pareto trade-offs, forward simulation. Exposed as an Azure API behind a custom connector.</div>
+          <div class="meta"><span class="stage poc">WASM in browser</span><span class="stage full">Azure compute</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow bidi"><svg viewBox="0 0 26 26"><line class="ln" x1="3" y1="13" x2="23" y2="13"/><polygon class="hd" points="21,8 26,13 21,18"/><polygon class="hd" points="5,8 0,13 5,18"/></svg></div>
+
+    <!-- Column 3: Power Platform -->
+    <div class="col col-3">
+      <div class="rail pp"><b>Experience</b><span class="platform">· Power Platform / M365</span><span class="bar"></span></div>
+      <div class="cards">
+        <div class="node own-you">
+          <div class="svc">Copilot Studio agent</div>
+          <div class="role">Conversational surface for the duty manager. Grounds on Dataverse, calls the engine, narrates options in Danish. Advisory only.</div>
+          <div class="meta"><span class="stage poc">buildable now</span><span class="stage full">M365 Copilot</span></div>
+        </div>
+        <div class="node own-you">
+          <div class="svc">Operator workflow app</div>
+          <div class="role">Power Apps shell for triage and accept/reject, with a hosted web component for the Gantt and Sankey visuals.</div>
+          <div class="meta"><span class="stage poc">web app PoC</span><span class="stage full">Power Apps</span></div>
+        </div>
+        <div class="node own-you">
+          <div class="svc">Value &amp; monitoring</div>
+          <div class="role">Power BI dashboards: realized cost, optimize-on versus off, on-time KPIs for Operations leadership.</div>
+          <div class="meta"><span class="stage poc">Value Recovery tab</span><span class="stage full">Power BI</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"><svg viewBox="0 0 26 26"><line class="ln" x1="2" y1="13" x2="20" y2="13"/><polygon class="hd" points="18,8 26,13 18,18"/></svg></div>
+
+    <!-- Column 4: Decision -->
+    <div class="col col-4">
+      <div class="rail de"><b>Decision</b><span class="bar"></span></div>
+      <div class="cards">
+        <div class="node own-gov" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+          <div class="svc">Duty manager decides</div>
+          <div class="role">A person accepts, adjusts, or rejects every proposal. The accepted plan writes to the audit log, and only later, under a governed workflow, back to Airhart.</div>
+          <div class="meta"><span class="stage full">human-in-the-loop · EU AI Act Art. 14</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- request/response loop caption -->
+    <div class="loop">
+      <b>Request / response loop:</b>
+      <span class="seq"><strong>Ask</strong> in Copilot or the app → <strong>custom connector</strong> → <strong>decision engine</strong> computes → <strong>ranked options + consequences</strong> return → person accepts → <strong>audit</strong>. The LLM never computes the allocation.</span>
+    </div>
+
+  </div>
+
+  <!-- ============ GOVERNANCE FOUNDATION ============ -->
+  <div class="foundation">
+    <div class="head"><b>Governance foundation</b><span>· cross-cutting, inside CPH's own Azure tenant</span></div>
+    <div class="row">
+      <div class="gcell"><div class="g-svc">Entra ID</div><div class="g-role">Identity and RBAC: who may accept a proposal.</div></div>
+      <div class="gcell"><div class="g-svc">Microsoft Purview</div><div class="g-role">Data classification and minimisation with the governance specialists.</div></div>
+      <div class="gcell"><div class="g-svc">Audit log</div><div class="g-role">Every proposal, acceptance, and rejection, in Dataverse.</div></div>
+      <div class="gcell"><div class="g-svc">EU AI Act · Art. 14</div><div class="g-role">Limited-risk posture, human oversight documented from day one.</div></div>
+      <div class="gcell"><div class="g-svc">Tenant boundary</div><div class="g-role">Data never leaves CPH's environment; no third-party egress.</div></div>
+    </div>
+  </div>
+
+  <!-- ============ MIGRATION SEQUENCE ============ -->
+  <div class="seqstrip">
+    <div class="step cur">
+      <div class="n">01</div>
+      <div class="t">Governed data feed</div>
+      <div class="d">Read-only Airhart + A-CDM into Azure / Dataverse. Nothing is real until the data is.</div>
+      <span class="when">First · Digital owns</span>
+    </div>
+    <div class="step">
+      <div class="n">02</div>
+      <div class="t">Decision engine to Azure</div>
+      <div class="d">Solver and projection as a governed service with a custom connector. Unlocks Copilot and Power Apps.</div>
+      <span class="when">Then · I build, Digital hosts</span>
+    </div>
+    <div class="step">
+      <div class="n">03</div>
+      <div class="t">Trained timing model</div>
+      <div class="d">Azure ML on real A-CDM replaces the synthetic layer. The genuine ML lands here.</div>
+      <span class="when">Then · Data science</span>
+    </div>
+    <div class="step">
+      <div class="n">04</div>
+      <div class="t">Surfaces &amp; governance</div>
+      <div class="d">Copilot Studio, Power BI, audit and RBAC, in parallel throughout.</div>
+      <span class="when">Throughout · shared</span>
+    </div>
+  </div>
+
+  <footer class="note">
+    <span>Pragmatic note: the browser solver is moved server-side for governance and integration, not for speed. At apron scale it already solves in under 100&nbsp;ms.</span>
+    <span class="right">CPH AI Business Lead · Operations &nbsp;|&nbsp; target architecture v1</span>
+  </footer>
+
+</div>
+</body>
+</html>

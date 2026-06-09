@@ -394,3 +394,31 @@ Replaced the worked-example Sankey with a live, feed-driven one (`v4Sankey`): th
 
 ### Sankey: connect at-risk passengers to their onward departures (DONE, verified 2026-06-09)
 The at-risk connections node was a dead end: passengers flowed into it from passport control but nothing flowed out, so you could not see which onward flights they were threatening to miss. Added the missing links: at-risk connecting passengers are distributed across the three soonest departures (tight connections miss the imminent flights), drawn as deep-blue ribbons; each departure node now sums on-time + at-risk and its tip shows "N connecting pax may miss this departure". Verified at 07:00: 27 ribbons (3 new at-risk -> departure links), the at-risk node has outgoing flow to the early departures, departure tips name the threatened onward flight; no console errors.
+
+---
+
+## 2026-06-09 (cont.) — Handler-cap rebuild, bug sweep, UI renames
+
+### Handler capacity cut, rebuilt on a concurrency queue (commit 33ae1d0)
+The old mechanism delayed flights by arrival order over a window and pointed the delay at the arrival's on-block, which modelled total count rather than simultaneity and slipped the wrong event. Rebuilt as a cap-server FCFS queue: the reduced crew is N parallel teams serving turnarounds by on-block time; when more of the handler's aircraft are on stand at once than there are teams, the excess wait for a team to free, their turnarounds run long, and the linked departures slip. This makes "cannot handle all simultaneous turnarounds" literal. Verified at the worst 48h window (Menzies, 12 concurrent vs 4 teams): 11 aircraft queue, 11 departures slip.
+
+Honest framing kept: this is the one disruption stand-reallocation cannot fix (a handler is contracted per flight), so the tool detects, flags, and prices it rather than optimizing it away.
+
+### Disruption legend and tooltips (commit 33ae1d0)
+Every disruption type now carries a single-source `tip` (hover tooltip on the inject button) and `desc` (full text). Added a "Disruptions you can inject" section to the Definitions tab, rendered from `V4_DISRUPT` so there is no drift.
+
+### Adversarial bug sweep (commit eca3e8b)
+Four parallel audit passes; six real bugs fixed and verified:
+1. Handler-cap delay was invisible to the realized ledger (it sat on the departure leg, which the ledger does not read). Attributed the wait to the arrival's delayMin and extended the arrival's dwell; departure slip kept for the cascade. Booked EUR 91.5k at a clustered handler.
+2. Escalation was free on the Trade-offs chart and in plan cost. Now charged escalateCost on all three axes (mirrors objTotals) and in v4PlanCost.
+3. An aircraft already parked when its stand fails was never stranded (ledger only checked the on-block minute). Now checks the whole stay and times the event at the outage start.
+4. Backward scrub left in-place FEED timing mutations and the handler cap in place. Added v4RebuildAt: a backward scrub regenerates a clean feed and replays only the disruptions live at t.
+5. eur() rendered "NaN" on non-numeric input; coerced to 0.
+6. The 16-flight decision cap dropped flights silently. Surfaced as a "Held beyond cap N" chip in the solve meta.
+
+Deferred (documented, not demo-blocking): dead V3 render-cluster removal, optimize-tab vs continuous-boundary alignment, load-run auto-replay.
+
+### UI renames and view removal (commit 9e81b73)
+- "Digital twin" tab renamed to "Downstream Projection" (tab label, pane title, prose references).
+- "Value" tab renamed to "Value Recovery".
+- Removed the "Four-case projection" view from the Value Recovery tab (legacy V3 forward model, redundant with Value delivered). The tab now has two views: "Value delivered" (headline) and "Realized cost · 48h run". The four-case support functions are now orphaned and flagged for the deferred dead-V3-cluster cleanup.
