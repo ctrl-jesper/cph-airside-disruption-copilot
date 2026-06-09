@@ -3051,27 +3051,79 @@ async function v4TwinNow() {
     return '<div class="rot-row"><span class="rot-tail">' + r.tail + '</span><div class="rot-chain">' + chain + '</div></div>';
   }).join('') : '<p class="cap" style="margin:4px 0 0">No propagated delay in this horizon. Inject a late arrival or longer turnaround on the feed to see the cascade.</p>';
   const rotBox = '<div class="opt-moves"><h4>Rotation delay cascade <span class="band">aircraft with a delayed leg, worst first</span></h4>' + rotHtml + '</div>';
-  const sankeyBox = '<div class="gantt-box"><h4>Passenger-flow Sankey <span class="band">worked example: the connection consequences a stand fault creates, which the feed-level view cannot see</span></h4>' +
-    '<p class="hint">A representative disrupted afternoon, passengers flowing from stand to passport control to the connection bank and onward departures. Ribbon width is passengers; a node turns deep blue when it congests. Hover any node or ribbon for detail. This is the passenger-flow depth a production build would add to the live feed.</p>' +
+  const sankeyBox = '<div class="gantt-box"><h4>Passenger-flow Sankey <span class="band">live from the feed clock: where the arriving passengers go and where connections come under threat</span></h4>' +
+    '<p class="hint">Arrivals in the next 3 hours flow from stand to passport control (Schengen and non-Schengen, queued against capacity) to their onward connections. Ribbon width is passengers; a passport node turns amber then deep blue as its queue builds; connections turn deep blue when at risk. Hover any node or ribbon for detail. It moves with the clock and reacts to injected disruptions.</p>' +
     '<div id="sankeySvg"></div></div><div class="sankey-tip" id="sankeyTip"></div>';
   document.getElementById('twinUI').innerHTML = cards + chart + rotBox + sankeyBox +
-    '<p class="cap">Two layers: the live projection over the current feed allocation (rotation delay and connection risk above), and the passenger-flow worked example (the Sankey), which models the passport and connection cascade the feed does not yet carry.</p>';
-  await v4RenderSankey();
+    '<p class="cap">Two layers of the same projection: the rotation delay cascade and connection risk (above), and the passenger flow through passport control to onward connections (the Sankey). Both derive from the current feed allocation at the clock; a stand fault or a delay shows up as a fuller queue and more at-risk connections.</p>';
+  v4Sankey();
 }
-// Worked-example passenger-flow Sankey: the V3 digital-twin model run on a representative
-// stand-fault afternoon. The live feed does not model passport queues or the connection bank, so
-// this is a labelled worked example, like the four-case projection, kept for its demo value.
-async function v4RenderSankey() {
-  const el = document.getElementById('sankeySvg'); if (!el || !window.__glpkReady) return;
-  const saved = state.disruptions;
-  state.disruptions = { standFaults: true, handlerShortage: false, standCrunch: false };
-  try {
-    const sol = await valueSolve(DEFAULT_WEIGHTS, { standFaults: true });
-    const sim = simulateTwin(sol.alloc, sol.towed);
-    window.__twin = { ...sim, idx: sim.steps.length - 1 };
-    renderSankey();
-  } catch (e) { console.error('sankey', e); if (el) el.innerHTML = '<p class="cap">Sankey unavailable.</p>'; }
-  finally { state.disruptions = saved; }
+// Live feed-grounded passenger-flow Sankey: arrivals in the next 3 hours flow from stand to
+// passport control (Schengen / non-Schengen, queued against capacity) to onward connections.
+// Driven by the feed clock and the current allocation, so it reacts to disruptions.
+function v4Sankey() {
+  const el = document.getElementById('sankeySvg'); if (!el) return;
+  const t = v4.now, H = 180, step = 5, PCAP = { S: 240, N: 180 };
+  const tips = []; window.__sankeyTips = tips; const tip = h => { tips.push(h || ''); return tips.length - 1; };
+  const all = FEED.filter(f => f.dir === 'arr' && f.plannedStand && f.predOn >= t && f.predOn < t + H)
+    .map(f => { const s = STANDS.find(x => x.id === v4StandOf(f)); const walk = s ? s.walk : 22; return { f, zone: f.zone === 'N' ? 'N' : 'S', pax: f.pax || 0, conPax: f.conPax || 0, remote: !!(s && s.type === 'remote'), stand: v4StandOf(f), walk, reach: f.predOn + walk, delay: f.delayMin || 0 }; });
+  if (!all.length) { el.innerHTML = '<p class="cap">No arrivals in the next 3 hours at this feed time. Scrub to a busier period.</p>'; return; }
+  let qS = 0, qN = 0, peakS = 0, peakN = 0;
+  for (let tt = t; tt < t + H; tt += step) {
+    const inS = all.filter(a => a.zone === 'S' && a.reach >= tt && a.reach < tt + step).reduce((x, a) => x + a.pax, 0);
+    const inN = all.filter(a => a.zone === 'N' && a.reach >= tt && a.reach < tt + step).reduce((x, a) => x + a.pax, 0);
+    qS = Math.max(0, qS + inS - PCAP.S); qN = Math.max(0, qN + inN - PCAP.N); peakS = Math.max(peakS, qS); peakN = Math.max(peakN, qN);
+  }
+  let paxS = 0, paxN = 0, conS = 0, conN = 0, riskS = 0, riskN = 0;
+  all.forEach(a => { const N = a.zone === 'N'; if (N) { paxN += a.pax; conN += a.conPax; } else { paxS += a.pax; conS += a.conPax; } if (a.delay >= 20 || a.remote) { if (N) riskN += a.conPax; else riskS += a.conPax; } });
+  riskS = Math.min(riskS, conS); riskN = Math.min(riskN, conN);
+  const onConnS = conS - riskS, onConnN = conN - riskN, landS = paxS - conS, landN = paxN - conN;
+  const onConn = onConnS + onConnN, atRisk = riskS + riskN, land = landS + landN;
+  const deps = FEED.filter(f => f.dir === 'dep' && f.predOn >= t && f.predOn < t + H).sort((a, b) => a.predOn - b.predOn).slice(0, 6);
+  const depW = deps.reduce((x, d) => x + (d.pax || 0), 0) || 1; deps.forEach(d => d._on = onConn * ((d.pax || 0) / depW));
+  all.sort((a, b) => b.pax - a.pax);
+  const shown = all.slice(0, 9), rest = all.slice(9);
+  const restS = rest.filter(a => a.zone === 'S').reduce((x, a) => x + a.pax, 0), restN = rest.filter(a => a.zone === 'N').reduce((x, a) => x + a.pax, 0);
+  const W = 1140, Hs = 600, top = 34, bot = 16, nodeW = 96, colX = [24, 292, 548, 804, W - 24 - nodeW];
+  const nodes = {}, order = [[], [], [], [], []];
+  const addNode = (col, key, value, label, sub, fill, txt, tipHtml, pulse) => { const n = { value: Math.max(value, 0), label, sub, fill, txt: txt || '#1b2350', tip: tip(tipHtml), pulse: !!pulse, outCur: 0, inCur: 0 }; nodes[key] = n; order[col].push(n); return n; };
+  const cong = q => q > 200 ? '#170d81' : q > 80 ? '#ffdd66' : '#dce7f7', congTxt = q => q > 200 ? '#fff' : '#1b2350';
+  shown.forEach(a => addNode(0, 'a_' + a.f.id, a.pax, a.f.id, a.pax + ' pax', a.remote ? '#cdd8ef' : '#dce7f7', '#1b2350',
+    '<b>' + a.f.id + '</b> &middot; ' + a.f.carrier + ' &middot; ' + a.f.ac + '<br>' + a.pax + ' pax, ' + a.conPax + ' connecting &middot; ' + (a.zone === 'N' ? 'non-Schengen' : 'Schengen') + '<br>stand ' + a.stand + (a.remote ? ' (remote)' : '') + ' &middot; +' + a.walk + ' min walk &middot; passport ' + fmt(a.reach) + (a.delay ? ' &middot; +' + a.delay + ' min late' : '')));
+  if (rest.length) addNode(0, 'a_other', restS + restN, '+' + rest.length + ' more', (restS + restN) + ' pax', '#eef2fa', '#6b7299', '<b>' + rest.length + ' more arrivals</b><br>' + (restS + restN) + ' pax');
+  addNode(1, 'pa_S', paxS, 'Schengen', paxS + ' pax', '#88a8ed', '#1b2350', '<b>Schengen arrivals</b><br>' + paxS + ' passengers to passport');
+  addNode(1, 'pa_N', paxN, 'Non-Schengen', paxN + ' pax', '#88a8ed', '#1b2350', '<b>Non-Schengen arrivals</b><br>' + paxN + ' passengers to passport');
+  addNode(2, 'pc_S', paxS, 'Schengen', Math.round(peakS) + ' peak queue', cong(peakS), congTxt(peakS), '<b>Schengen passport</b><br>peak queue ' + Math.round(peakS) + ' &middot; ' + PCAP.S + ' pax / 5 min', peakS > 200);
+  addNode(2, 'pc_N', paxN, 'Non-Schengen', Math.round(peakN) + ' peak queue', cong(peakN), congTxt(peakN), '<b>Non-Schengen passport</b><br>peak queue ' + Math.round(peakN) + ' &middot; ' + PCAP.N + ' pax / 5 min', peakN > 200);
+  addNode(3, 'on_conn', onConn, 'Connections', Math.round(onConn) + ' pax', '#dce7f7', '#1b2350', '<b>Connections on time</b><br>' + Math.round(onConn) + ' connecting passengers');
+  addNode(3, 'on_risk', atRisk, 'At risk', Math.round(atRisk) + ' pax', atRisk > 0 ? '#170d81' : '#dce7f7', atRisk > 0 ? '#fff' : '#1b2350', '<b>Connections at risk</b><br>' + Math.round(atRisk) + ' connecting passengers (delayed inbound or bussed from a remote stand)', atRisk > 0);
+  addNode(3, 'on_land', land, 'Landside', Math.round(land) + ' pax', '#e6e2dc', '#1b2350', '<b>Landside exit</b><br>' + Math.round(land) + ' passengers ending their journey at CPH');
+  if (deps.length) deps.forEach(d => addNode(4, 'd_' + d.id, d._on, d.id, d.to || '', '#dce7f7', '#1b2350', '<b>' + d.id + '</b> &rarr; ' + (d.to || '') + ' &middot; dep ' + fmt(d.predOn) + '<br>' + Math.round(d._on) + ' connecting'));
+  else addNode(4, 'd_none', onConn, 'Onward', 'departures', '#dce7f7', '#1b2350', 'Onward departures');
+  const layout = (items, x) => { if (!items.length) return; const total = items.reduce((a, n) => a + n.value, 0) || 1, gap = 9, availH = Hs - top - bot - gap * (items.length - 1), scale = availH / total; let y = top; items.forEach(n => { n.h = Math.max(14, n.value * scale); n.x = x; n.y = y; y += n.h + gap; }); const off = Math.max(0, (Hs - top - bot - (y - gap - top)) / 2); items.forEach(n => { n.y += off; n.outCur = n.y; n.inCur = n.y; }); };
+  order.forEach((items, i) => layout(items, colX[i]));
+  const links = [], L = (sk, tk, value, color, tipHtml) => { if (value > 0.5 && nodes[sk] && nodes[tk]) links.push({ s: nodes[sk], t: nodes[tk], value, color, tip: tip(tipHtml) }); };
+  shown.forEach(a => L('a_' + a.f.id, a.zone === 'N' ? 'pa_N' : 'pa_S', a.pax, a.remote ? '#cdd8ef' : '#88a8ed', '<b>' + a.f.id + ' &rarr; ' + (a.zone === 'N' ? 'non-Schengen' : 'Schengen') + '</b><br>' + a.pax + ' pax &middot; +' + a.walk + ' min walk'));
+  if (rest.length) { L('a_other', 'pa_S', restS, '#88a8ed', restS + ' pax'); L('a_other', 'pa_N', restN, '#88a8ed', restN + ' pax'); }
+  L('pa_S', 'pc_S', paxS, '#88a8ed', paxS + ' pax'); L('pa_N', 'pc_N', paxN, peakN > 200 ? '#170d81' : '#88a8ed', paxN + ' pax');
+  L('pc_S', 'on_conn', onConnS, '#88a8ed', Math.round(onConnS) + ' on time'); L('pc_S', 'on_risk', riskS, '#170d81', Math.round(riskS) + ' at risk'); L('pc_S', 'on_land', landS, '#cdd8ef', Math.round(landS) + ' landside');
+  L('pc_N', 'on_conn', onConnN, '#88a8ed', Math.round(onConnN) + ' on time'); L('pc_N', 'on_risk', riskN, '#170d81', Math.round(riskN) + ' at risk'); L('pc_N', 'on_land', landN, '#cdd8ef', Math.round(landN) + ' landside');
+  if (deps.length) deps.forEach(d => L('on_conn', 'd_' + d.id, d._on, '#88a8ed', '<b>Connections &rarr; ' + d.id + '</b><br>' + Math.round(d._on) + ' pax')); else L('on_conn', 'd_none', onConn, '#88a8ed', Math.round(onConn) + ' pax');
+  let svg = '';
+  ['ARRIVALS', 'PASSPORT', 'PASSPORT CONTROL', 'OUTCOME', 'ONWARD'].forEach((h, i) => svg += '<text x="' + (colX[i] + nodeW / 2) + '" y="18" text-anchor="middle" font-size="11" font-weight="700" fill="#6b7299">' + h + '</text>');
+  links.forEach(lk => {
+    const S = lk.s, Tn = lk.t, sH = S.value > 0 ? lk.value * (S.h / S.value) : 0, tH = Tn.value > 0 ? lk.value * (Tn.h / Tn.value) : 0;
+    const s0 = S.outCur, s1 = S.outCur + sH; S.outCur += sH; const t0 = Tn.inCur, t1 = Tn.inCur + tH; Tn.inCur += tH;
+    const x1 = S.x + nodeW, x2 = Tn.x, mx = (x1 + x2) / 2;
+    svg += '<path d="M' + x1.toFixed(1) + ',' + s0.toFixed(1) + ' C' + mx.toFixed(1) + ',' + s0.toFixed(1) + ' ' + mx.toFixed(1) + ',' + t0.toFixed(1) + ' ' + x2.toFixed(1) + ',' + t0.toFixed(1) + ' L' + x2.toFixed(1) + ',' + t1.toFixed(1) + ' C' + mx.toFixed(1) + ',' + t1.toFixed(1) + ' ' + mx.toFixed(1) + ',' + s1.toFixed(1) + ' ' + x1.toFixed(1) + ',' + s1.toFixed(1) + ' Z" fill="' + lk.color + '" fill-opacity="0.38" onmousemove="sankeyTip(event,' + lk.tip + ')" onmouseout="sankeyHide()"></path>';
+  });
+  Object.values(nodes).forEach(n => {
+    svg += '<g' + (n.pulse ? ' class="flow-pulse"' : '') + ' style="cursor:default" onmousemove="sankeyTip(event,' + n.tip + ')" onmouseout="sankeyHide()"><rect x="' + n.x + '" y="' + n.y.toFixed(1) + '" width="' + nodeW + '" height="' + n.h.toFixed(1) + '" rx="5" fill="' + n.fill + '" stroke="#d8d3cc"></rect>';
+    if (n.h >= 26) svg += '<text x="' + (n.x + nodeW / 2) + '" y="' + (n.y + n.h / 2 - 2).toFixed(1) + '" text-anchor="middle" font-size="11" font-weight="700" fill="' + n.txt + '">' + n.label + '</text><text x="' + (n.x + nodeW / 2) + '" y="' + (n.y + n.h / 2 + 11).toFixed(1) + '" text-anchor="middle" font-size="9.5" fill="' + n.txt + '" opacity="0.8">' + n.sub + '</text>';
+    else svg += '<text x="' + (n.x + nodeW / 2) + '" y="' + (n.y + n.h / 2 + 3.5).toFixed(1) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="' + n.txt + '">' + n.label + '</text>';
+    svg += '</g>';
+  });
+  el.innerHTML = '<svg width="100%" viewBox="0 0 ' + W + ' ' + Hs + '" preserveAspectRatio="xMidYMid meet" style="max-height:600px">' + svg + '</svg>';
 }
 
 function v4MaybeSolve() {
