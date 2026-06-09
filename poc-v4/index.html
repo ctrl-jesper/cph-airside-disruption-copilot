@@ -1669,7 +1669,7 @@ function computeValue(alloc, towed) {
   return { items, total };
 }
 
-function eur(n) { return '€' + Math.round(n).toLocaleString('en-US'); }
+function eur(n) { const x = Math.round(n); return '€' + (Number.isFinite(x) ? x : 0).toLocaleString('en-US'); }
 
 function renderValuePanel(elId, alloc, towed) {
   const el = document.getElementById(elId); if (!el) return;
@@ -2652,7 +2652,20 @@ function v4Play() {
 // Rebuild the live out-of-service set from the disruption records for the given time, so a
 // backward scrub does not leave a stand that has since been cleared incorrectly online (or vice versa).
 function v4SyncOos(t) { v4sim.oos = new Set(v4sim.disruptions.filter(d => d.type === 'standOffline' && d.time <= t && t < d.time + d.duration).map(d => d.target)); }
-function v4Scrub(m) { v4.now = Math.max(0, Math.min(SIM_HORIZON, +m)); v4ApplyDue(v4.now); v4SyncOos(v4.now); if (v4sim.optimize) v4sim.lastSolveAt = -1; v4Frame(); if (v4sim.optimize) v4MaybeSolve(); v4DisruptPanel(); v4Gantt(); }
+// Backward scrub: the timing disruptions mutate FEED in place and are not individually reversible,
+// so regenerate a clean feed and replay only the disruptions live at time t. Forward scrub needs none of this.
+function v4RebuildAt(t) {
+  FEED = generate48hSchedule();
+  v4sim.oos.clear(); v4sim.handlerCap = {};
+  v4sim.disruptions.forEach(d => { d.applied = false; d.cleared = false; });
+  v4ApplyDue(t);
+}
+function v4Scrub(m) {
+  const target = Math.max(0, Math.min(SIM_HORIZON, +m));
+  if (target < v4.now) v4RebuildAt(target);
+  v4.now = target; v4ApplyDue(v4.now); v4SyncOos(v4.now);
+  if (v4sim.optimize) v4sim.lastSolveAt = -1; v4Frame(); if (v4sim.optimize) v4MaybeSolve(); v4DisruptPanel(); v4Gantt();
+}
 function v4SetSpeed(i) { v4.speedIdx = +i; v4Controls(); }
 function v4Reset() {
   v4.playing = false; if (v4.raf) cancelAnimationFrame(v4.raf); v4.raf = null; v4.now = 0;
@@ -2792,7 +2805,10 @@ function v4ArrPhase(f, t) {
 function v4IsCommitted(f, t) { return t >= f.predOn - CONFIG.commitLead; }
 function v4PlanCost() {
   let c = 0;
-  FEED.filter(f => f.dir === 'arr').forEach(f => { const s = STANDS.find(x => x.id === v4sim.assign[f.id]); if (s) c += v4CostFS(f, s); });
+  FEED.filter(f => f.dir === 'arr').forEach(f => {
+    if (v4sim.assign[f.id] === 'ESC') { c += CONFIG.escalateCost; return; }
+    const s = STANDS.find(x => x.id === v4sim.assign[f.id]); if (s) c += v4CostFS(f, s);
+  });
   return Math.round(c);
 }
 
@@ -2841,7 +2857,9 @@ function v4BuildWindowModel(t, w, glpk) {
   const win = CONFIG.windowMin;
   const windowArrs = FEED.filter(f => f.dir === 'arr' && f.plannedStand && (f.predOn + (f.dwell || 45)) > t && f.predOn < t + win);
   const forced = windowArrs.filter(f => v4IsCommitted(f, t) && v4sim.assign[f.id] && v4sim.oos.has(v4sim.assign[f.id]));
-  const free = windowArrs.filter(f => !v4IsCommitted(f, t)).sort((a, b) => a.predOn - b.predOn).slice(0, V4_DECISION_CAP);
+  const freeAll = windowArrs.filter(f => !v4IsCommitted(f, t)).sort((a, b) => a.predOn - b.predOn);
+  const free = freeAll.slice(0, V4_DECISION_CAP);
+  const cappedOut = Math.max(0, freeAll.length - V4_DECISION_CAP);   // held on their planned stand, not optimized this solve
   const decision = [...forced, ...free];
   const decSet = new Set(decision.map(f => f.id));
   const fixed = windowArrs.filter(f => !decSet.has(f.id));
@@ -2870,7 +2888,7 @@ function v4BuildWindowModel(t, w, glpk) {
         subjectTo.push({ name: 'c_' + s.id + '_' + a.id + '_' + b.id, vars: [{ name: 'x_' + a.id + '_' + s.id, coef: 1 }, { name: 'x_' + b.id + '_' + s.id, coef: 1 }], bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 } });
     }
   });
-  return { objVars, binaries, subjectTo, decision, elig, windowArrs, fixed };
+  return { objVars, binaries, subjectTo, decision, elig, windowArrs, fixed, cappedOut };
 }
 async function v4Solve(t) {
   const glpk = window.__glpk; if (!glpk || v4sim.solving) return;
@@ -2908,7 +2926,7 @@ async function v4SolveWindow(t, w) {
   const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
   const ms = Math.round(performance.now() - a);
   m.decision.forEach(f => { let chosen = 'ESC'; m.elig[f.id].forEach(s => { if (res.result.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; }); alloc[f.id] = chosen; });
-  return { alloc, decision: m.decision, fixed: m.fixed, windowArrs: m.windowArrs, meta: { decisionCount: m.decision.length, binaries: m.binaries.length, constraints: m.subjectTo.length, ms, status: statusLabel(res.result.status, glpk) } };
+  return { alloc, decision: m.decision, fixed: m.fixed, windowArrs: m.windowArrs, meta: { decisionCount: m.decision.length, cappedOut: m.cappedOut || 0, binaries: m.binaries.length, constraints: m.subjectTo.length, ms, status: statusLabel(res.result.status, glpk) } };
 }
 
 /* ===== U6: Optimize and Trade-offs explainers, on the live feed window =====
@@ -2925,6 +2943,7 @@ async function v4OptimizeNow() {
     document.getElementById('solveMeta').innerHTML =
       '<span class="chip ok">Status <b>' + m.status + '</b></span>' +
       '<span class="chip">Decision flights <b>' + m.decisionCount + '</b></span>' +
+      (m.cappedOut ? '<span class="chip warn">Held beyond cap <b>' + m.cappedOut + '</b></span>' : '') +
       '<span class="chip">Binary vars <b>' + m.binaries + '</b></span>' +
       '<span class="chip">Constraints <b>' + m.constraints + '</b></span>' +
       '<span class="chip">Solve <b>' + m.ms + ' ms</b></span>';
@@ -2972,7 +2991,7 @@ const V4_TRADE = [
 function allocComponents(alloc) {
   const c = { passenger: 0, handler: 0, schedule: 0, remote: 0, esc: 0 };
   Object.keys(alloc).forEach(id => {
-    const sid = alloc[id]; if (sid === 'ESC' || sid == null) { if (sid === 'ESC') c.esc++; return; }
+    const sid = alloc[id]; if (sid === 'ESC' || sid == null) { if (sid === 'ESC') { c.esc++; c.passenger += CONFIG.escalateCost; c.handler += CONFIG.escalateCost; c.schedule += CONFIG.escalateCost; } return; }
     const f = FEED.find(x => x.id === id), s = STANDS.find(x => x.id === sid); if (!f || !s) return;
     const p = v4CostParts(f, s); c.passenger += p.passenger; c.handler += p.handler; c.schedule += p.schedule; if (s.type === 'remote') c.remote++;
   });
@@ -3316,7 +3335,9 @@ function v4ApplyOne(d) {
       teamFree[0] = start + (x.dwell || 45);           // that team is busy through this turnaround
       if (wait > 0) {
         x.handlerWait = wait;                          // flagged conflict: crew could not start on time
-        const dep = FEED.find(y => y.id === x.depId);
+        x.delayMin = (x.delayMin || 0) + wait;         // priced by the realized ledger's delay driver
+        x.dwell = (x.dwell || 45) + wait;              // the aircraft holds the stand until the crew finishes
+        const dep = FEED.find(y => y.id === x.depId);  // the next leg slips too (rotation cascade in the twin)
         if (dep) { dep.predOn += wait; dep.delayMin = (dep.delayMin || 0) + wait; }
       }
     });
@@ -3391,8 +3412,11 @@ function v4LedgerEvents() {
     const t = f.predOn;
     if ((f.delayMin || 0) > 0) ev.push({ t, eur: f.delayMin * VALUE.eurDelayMin, kind: 'delay', fid: f.id });
     const sid = v4StandOf(f), s = sid ? STANDS.find(x => x.id === sid) : null;
-    const stranded = !s || v4StandOfflineAt(sid, t) || CODE_NUM[s.code] < CODE_NUM[f.code] || (s.zone !== 'M' && s.zone !== f.zone);
-    if (stranded) ev.push({ t, eur: (f.conPax || 0) * u.connection + (f.pax || 0) * VALUE.eurReaccom, kind: 'strand', fid: f.id });
+    // an outage strands the aircraft if it overlaps any part of its stay, not only its on-block minute
+    const occEnd = t + (f.dwell || 45);
+    const outage = sid ? v4sim.disruptions.find(d => d.type === 'standOffline' && d.target === sid && d.time < occEnd && d.time + d.duration > t) : null;
+    const stranded = !s || outage || CODE_NUM[s.code] < CODE_NUM[f.code] || (s.zone !== 'M' && s.zone !== f.zone);
+    if (stranded) ev.push({ t: outage ? Math.max(t, outage.time) : t, eur: (f.conPax || 0) * u.connection + (f.pax || 0) * VALUE.eurReaccom, kind: 'strand', fid: f.id });
     else if (s.type === 'remote') ev.push({ t, eur: u.busTrip, kind: 'bus', fid: f.id });
   });
   const gateSeen = new Set();   // one gate-change charge per flight; escalations are strands, not gate moves
