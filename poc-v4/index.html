@@ -2966,22 +2966,39 @@ async function v4Tradeoffs() {
 }
 function renderTradeoffs(results) {
   const W = 760, H = 320, pl = 64, pb = 46, pt = 16, pr = 150;
+  const spread = k => Math.max(...results.map(r => r.comp[k])) - Math.min(...results.map(r => r.comp[k]));
+  const degenerate = spread('passenger') < 1 && spread('handler') < 1 && spread('schedule') < 1;
   const xs = results.map(r => r.comp.passenger), ys = results.map(r => r.comp.schedule);
-  const xmax = Math.max(1, ...xs), ymax = Math.max(1, ...ys);
+  const xmax = Math.max(1, ...xs) * 1.2, ymax = Math.max(1, ...ys) * 1.2;   // headroom so points never sit on the border
   const sx = v => pl + v / xmax * (W - pl - pr), sy = v => (H - pb) - v / ymax * (H - pb - pt);
   let svg = '';
   for (let g = 0; g <= 4; g++) { const yy = pt + g / 4 * (H - pb - pt); svg += '<line x1="' + pl + '" y1="' + yy.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + yy.toFixed(1) + '" stroke="#eef2fa"/>'; }
   svg += '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/><line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/>';
   svg += '<text x="' + ((pl + W - pr) / 2) + '" y="' + (H - 8) + '" font-size="11" fill="#6b7299" text-anchor="middle">Passenger cost (walk + connections) &rarr;</text>';
   svg += '<text x="16" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 16 ' + (H / 2) + ')">Schedule cost (remote + zone) &rarr;</text>';
-  results.forEach(r => { const cx = sx(r.comp.passenger), cy = sy(r.comp.schedule); svg += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="7" fill="' + r.color + '"/>'; });
+  // Points that coincide on the passenger/schedule projection (often because they differ only in
+  // handler cost, or because a slack window has no trade-off) are fanned around the shared spot so
+  // all four strategies stay visible; a dashed ring marks where they actually sit.
+  const pts = results.map(r => ({ r, bx: sx(r.comp.passenger), by: sy(r.comp.schedule) }));
+  pts.forEach(p => { p.x = p.bx; p.y = p.by; });
+  const groups = {};
+  pts.forEach(p => { const k = Math.round(p.bx) + ',' + Math.round(p.by); (groups[k] = groups[k] || []).push(p); });
+  Object.values(groups).forEach(g => {
+    if (g.length > 1) { const R = 13; svg += '<circle cx="' + g[0].bx.toFixed(1) + '" cy="' + g[0].by.toFixed(1) + '" r="18" fill="none" stroke="#c9d2e8" stroke-dasharray="2 2"/>';
+      g.forEach((p, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / g.length; p.x = p.bx + R * Math.cos(a); p.y = p.by + R * Math.sin(a); }); }
+  });
+  pts.forEach(p => { svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="7" fill="' + p.r.color + '" stroke="#fff" stroke-width="1.5"/>'; });
   results.forEach((r, i) => { const ly = pt + 8 + i * 22, lx = W - pr + 12; svg += '<circle cx="' + (lx + 6) + '" cy="' + ly + '" r="6" fill="' + r.color + '"/><text x="' + (lx + 18) + '" y="' + (ly + 4) + '" font-size="11.5" fill="#1b2350">' + r.label + '</text>'; });
   const rows = results.map(r => '<tr><td><span class="vc-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + r.color + '"></span> ' + r.label + '</td><td>' + Math.round(r.comp.passenger) + '</td><td>' + Math.round(r.comp.handler) + '</td><td>' + Math.round(r.comp.schedule) + '</td><td>' + r.comp.remote + '</td><td>' + r.comp.esc + '</td></tr>').join('');
+  const note = degenerate
+    ? '<div class="callout"><b>No trade-off at this window.</b> With spare stands there is no contention, so every strategy reaches the same allocation and the four points coincide. Inject a disruption, or open a busier window, to make the strategies diverge.</div>'
+    : '';
   document.getElementById('paretoUI').innerHTML =
+    note +
     '<div class="gantt-box"><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:340px">' + svg + '</svg></div>' +
     '<div class="opt-moves"><h4>Strategy comparison <span class="band">cost components of each window allocation</span></h4>' +
     '<table class="mini"><tr><th>Strategy</th><th>Passenger</th><th>Handler</th><th>Schedule</th><th>Remotes</th><th>Escalations</th></tr>' + rows + '</table></div>' +
-    '<p class="cap">Each point is the window solved under one strategy. Protecting an objective lowers its cost and raises the others; the gap between the points is the trade-off the operator governs. Apply a strategy continuously on the 48h feed.</p>';
+    '<p class="cap">Each point is the window solved under one strategy, plotted as passenger cost against schedule cost; the handler cost is in the table. Strategies that reach the same passenger and schedule cost share a spot and are fanned around it. Protecting an objective lowers its cost and raises the others; the gap between the points is the trade-off the operator governs. Apply a strategy continuously on the 48h feed.</p>';
 }
 
 /* ===== U7: digital twin on the feed (scoped) =====
