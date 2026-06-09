@@ -730,6 +730,7 @@
   /* Vendored solver: glpk.js v5.0.0 (GLPK via WebAssembly), self-contained and offline.
      The browser build spawns a worker from an inline blob, so solve() is async. */
   import GLPK from './assets/glpk.js';
+  window.__GLPK_FACTORY = GLPK;   // kept so a hung worker can be terminated and re-created
   window.__glpkReady = GLPK()
     .then(g => { window.__glpk = g; return g; })
     .catch(err => { console.error('GLPK init failed:', err); throw err; });
@@ -2806,7 +2807,39 @@ function feedFlightsAround(t, back, fwd) {
    lost (DP-3). Flights beyond the cap stay on their planned stand this round and become
    decisions later as the clock advances. This keeps the MIP in the same size class as the
    V3 whole-apron solve and avoids pathologically hard set-packing instances. */
-const V4_DECISION_CAP = 16;
+const V4_DECISION_CAP = 12;
+const V4_ELIG_CAP = 8;   // candidate shortlist: each flight keeps only its best-N stands, which bounds the binaries and the pairwise no-overlap constraints. Enough for the strategies to diverge; the wall-clock budget below catches the rare dense instance that is still slow.
+const V4_SOLVE_BUDGET_MS = 900;   // hard cap per solve. GLPK has no internal time limit and a dense set-packing window can run for tens of seconds, so a solve that exceeds this is abandoned and a fast greedy allocation is used instead. The optimizer therefore never hangs.
+// Greedy best-fit fallback, returned in the same vars shape glpk produces so the callers are unchanged.
+// Most-constrained flight first (fewest candidate stands), each taking its cheapest free stand.
+function v4GreedyVars(m) {
+  const vars = {}; m.binaries.forEach(v => vars[v] = 0);
+  const taken = {};
+  m.decision.slice().sort((a, b) => (m.elig[a.id].length - m.elig[b.id].length) || (a.predOn - b.predOn)).forEach(f => {
+    const fo = f.predOn, fe = f.predOn + (f.dwell || 45);
+    let chosen = null;
+    for (const s of m.elig[f.id]) { const w = taken[s.id] || (taken[s.id] = []); if (!w.some(x => fo < x[1] && x[0] < fe)) { chosen = s.id; w.push([fo, fe]); break; } }
+    vars['x_' + f.id + '_' + (chosen || 'ESC')] = 1;
+  });
+  return vars;
+}
+let v4glpkResetting = false;
+async function v4ResetGlpk(glpk) {
+  if (v4glpkResetting || !window.__GLPK_FACTORY) return; v4glpkResetting = true;
+  try { glpk && glpk.terminate && glpk.terminate(); } catch (e) {}
+  try { window.__glpk = await window.__GLPK_FACTORY(); } catch (e) { console.error('glpk reset failed', e); }
+  v4glpkResetting = false;
+}
+// Race the worker solve against the wall-clock budget. On timeout, reset the worker (so the abandoned
+// solve cannot block the queue) and return a greedy allocation. Returns { vars, status, greedy }.
+async function v4SolveLP(lp, glpk, m) {
+  let timer; const budget = new Promise(r => { timer = setTimeout(() => r('TIMEOUT'), V4_SOLVE_BUDGET_MS); });
+  const run = glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true }).then(r => r).catch(() => 'ERROR');
+  const winner = await Promise.race([run, budget]); clearTimeout(timer);
+  if (winner !== 'TIMEOUT' && winner !== 'ERROR' && winner && winner.result) return { vars: winner.result.vars, status: winner.result.status, greedy: false };
+  if (winner === 'TIMEOUT') v4ResetGlpk(glpk);
+  return { vars: v4GreedyVars(m), status: null, greedy: true };
+}
 // Shared windowed-model builder (U6). Pure: returns the MIP for the window at time t under
 // weights w. Used by the continuous optimizer (v4Solve, mutating) and the Optimize / Trade-offs
 // explainers (v4SolveWindow, non-mutating).
@@ -2826,11 +2859,14 @@ function v4BuildWindowModel(t, w, glpk) {
   const objVars = [], binaries = [], subjectTo = [], elig = {};
   decision.forEach(f => {
     const cur = v4sim.assign[f.id], phase = v4ArrPhase(f, t), assignVars = [];
-    elig[f.id] = STANDS.filter(s => v4StandOk(f, s) && standFree(f, s));
+    const stabOf = s => (cur && cur !== s.id) ? (phase === 'boarding' ? V4_STAB.boarding : phase === 'parked' ? V4_STAB.parked : V4_STAB.inbound) : 0;
+    // keep only the best V4_ELIG_CAP stands for this flight (escalation remains available below)
+    elig[f.id] = STANDS.filter(s => v4StandOk(f, s) && standFree(f, s))
+      .map(s => ({ s, c: v4CostW(f, s, w) + stabOf(s) }))
+      .sort((a, b) => a.c - b.c).slice(0, V4_ELIG_CAP).map(x => x.s);
     elig[f.id].forEach(s => {
       const v = 'x_' + f.id + '_' + s.id;
-      let coef = v4CostW(f, s, w);
-      if (cur && cur !== s.id) coef += phase === 'boarding' ? V4_STAB.boarding : phase === 'parked' ? V4_STAB.parked : V4_STAB.inbound;
+      const coef = v4CostW(f, s, w) + stabOf(s);
       objVars.push({ name: v, coef }); binaries.push(v); assignVars.push({ name: v, coef: 1 });
     });
     const esc = 'x_' + f.id + '_ESC';
@@ -2854,11 +2890,11 @@ async function v4Solve(t) {
     const m = v4BuildWindowModel(t, v4sim.weights || CONFIG.weights, glpk);
     if (!m.windowArrs.length) return;
     const lp = { name: 'roll', objective: { direction: glpk.GLP_MIN, name: 'cost', vars: m.objVars }, subjectTo: m.subjectTo, binaries: m.binaries };
-    const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+    const sol = await v4SolveLP(lp, glpk, m);
     m.decision.forEach(f => {
       let chosen = null;
-      m.elig[f.id].forEach(s => { if (res.result.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; });
-      if (!chosen && res.result.vars['x_' + f.id + '_ESC'] > 0.5) chosen = 'ESC';
+      m.elig[f.id].forEach(s => { if (sol.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; });
+      if (!chosen && sol.vars['x_' + f.id + '_ESC'] > 0.5) chosen = 'ESC';
       if (chosen && chosen !== v4sim.assign[f.id]) {
         const from = v4sim.assign[f.id];
         const reason = chosen === 'ESC' ? 'no feasible stand (escalated)'
@@ -2880,10 +2916,10 @@ async function v4SolveWindow(t, w) {
   if (!m.decision.length) return { alloc, decision: [], fixed: m.fixed, windowArrs: m.windowArrs, meta: { decisionCount: 0, binaries: 0, constraints: 0, ms: 0, status: 'No decisions in window' } };
   const lp = { name: 'opt', objective: { direction: glpk.GLP_MIN, name: 'cost', vars: m.objVars }, subjectTo: m.subjectTo, binaries: m.binaries };
   const a = performance.now();
-  const res = await glpk.solve(lp, { msglev: glpk.GLP_MSG_OFF, presol: true });
+  const sol = await v4SolveLP(lp, glpk, m);
   const ms = Math.round(performance.now() - a);
-  m.decision.forEach(f => { let chosen = 'ESC'; m.elig[f.id].forEach(s => { if (res.result.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; }); alloc[f.id] = chosen; });
-  return { alloc, decision: m.decision, fixed: m.fixed, windowArrs: m.windowArrs, meta: { decisionCount: m.decision.length, cappedOut: m.cappedOut || 0, binaries: m.binaries.length, constraints: m.subjectTo.length, ms, status: statusLabel(res.result.status, glpk) } };
+  m.decision.forEach(f => { let chosen = 'ESC'; m.elig[f.id].forEach(s => { if (sol.vars['x_' + f.id + '_' + s.id] > 0.5) chosen = s.id; }); alloc[f.id] = chosen; });
+  return { alloc, decision: m.decision, fixed: m.fixed, windowArrs: m.windowArrs, meta: { decisionCount: m.decision.length, cappedOut: m.cappedOut || 0, binaries: m.binaries.length, constraints: m.subjectTo.length, ms, status: sol.greedy ? 'Heuristic (budgeted)' : statusLabel(sol.status, glpk), greedy: sol.greedy } };
 }
 
 /* ===== U6: Optimize and Trade-offs explainers, on the live feed window =====
