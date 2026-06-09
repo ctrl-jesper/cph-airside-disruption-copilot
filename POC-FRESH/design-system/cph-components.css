@@ -1,0 +1,107 @@
+/* ============================================================================
+   CPH COMPONENTS — POC-FRESH v1
+   Reusable UI built on cph-tokens.css. The flight board is modelled on the
+   live cph.dk departures board (columns, controls, statuses, behaviour text);
+   see UI-SPEC.md for the anatomy and the status vocabulary.
+   Link AFTER cph-tokens.css.
+   ========================================================================= */
+
+/* ----------------------------- base ------------------------------------- */
+.cph { font-family: var(--font-body); color: var(--c-text); background: var(--c-canvas);
+  font-size: var(--fs-body); line-height: var(--lh-body); -webkit-font-smoothing: antialiased; }
+.cph *, .cph *::before, .cph *::after { box-sizing: border-box; }
+.cph-display { font-family: var(--font-display); letter-spacing: var(--ls-tight); color: var(--c-brand); }
+.cph-h1 { font-family: var(--font-display); font-size: var(--fs-display-lg); line-height: var(--lh-display-lg); color: var(--c-brand); margin: 0; }
+.cph-h2 { font-family: var(--font-display); font-size: var(--fs-heading-xl); line-height: var(--lh-heading-xl); color: var(--c-brand); margin: 0; }
+.cph-overline { font-size: var(--fs-overline); letter-spacing: var(--ls-overline); text-transform: uppercase; color: var(--c-text-muted); font-weight: var(--fw-semibold); }
+.cph-num { font-family: var(--font-numeric); font-feature-settings: var(--fvn-tabular); font-variant-numeric: tabular-nums; }
+
+/* ----------------------------- buttons ---------------------------------- */
+.cph-btn { font-family: var(--font-body); font-weight: var(--fw-semibold); font-size: var(--fs-body-sm);
+  display: inline-flex; align-items: center; gap: var(--space-2); padding: .625rem 1rem;
+  border-radius: var(--radius-sm); border: 1px solid transparent; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard); }
+.cph-btn:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.cph-btn--primary { background: var(--c-action); color: #fff; }
+.cph-btn--primary:hover { background: var(--c-action-hover); }
+.cph-btn--accent { background: var(--c-accent); color: var(--c-on-accent); }
+.cph-btn--ghost { background: #fff; color: var(--c-brand); border-color: var(--c-border-strong); }
+.cph-btn--ghost:hover { border-color: var(--c-action); }
+.cph-btn--text { background: transparent; color: var(--c-link); padding: .5rem .25rem; }
+
+/* ----------------------------- status pill ------------------------------ */
+/* Brand-pure variants (default; matches the public cph.dk board) */
+.cph-status { display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: var(--fs-caption); font-weight: var(--fw-semibold); line-height: 1;
+  padding: .3125rem .625rem; border-radius: var(--radius-pill); white-space: nowrap; }
+.cph-status::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: currentColor; opacity: .9; }
+.cph-status--ontime    { background: var(--c-ontime-bg);    color: var(--c-ontime-ink); }
+.cph-status--attention { background: var(--c-attention-bg); color: var(--c-attention-ink); }
+.cph-status--critical  { background: var(--c-critical-bg);  color: var(--c-critical-ink); }
+.cph-status--muted     { background: var(--c-muted-bg);     color: var(--c-muted-ink); }
+
+/* Functional variants (ops extension; add .is-functional on an ancestor) */
+.is-functional .cph-status--ontime    { background: var(--c-ok-bg);     color: var(--c-ok); }
+.is-functional .cph-status--attention { background: var(--c-warn-bg);   color: var(--c-warn); }
+.is-functional .cph-status--critical  { background: var(--c-danger-bg); color: var(--c-danger); }
+
+/* ----------------------------- card ------------------------------------- */
+.cph-card { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); padding: var(--space-6); }
+
+/* ======================== FLIGHT / DEPARTURES BOARD ===================== */
+.cph-board { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm); overflow: clip; }
+
+/* Board header: tabs + headline */
+.cph-board__head { padding: var(--space-5) var(--space-6) 0; }
+.cph-board__tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--c-border); }
+.cph-tab { font-weight: var(--fw-semibold); font-size: var(--fs-body); color: var(--c-text-muted);
+  padding: var(--space-3) var(--space-4); border: none; background: none; cursor: pointer;
+  border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.cph-tab[aria-selected="true"] { color: var(--c-brand); border-bottom-color: var(--c-accent); }
+.cph-board__headline { font-family: var(--font-display); font-size: var(--fs-heading-xl);
+  color: var(--c-brand); margin: var(--space-5) 0 var(--space-4); }
+
+/* Controls: search + date + time */
+.cph-board__controls { display: flex; flex-wrap: wrap; gap: var(--space-3); padding: 0 var(--space-6) var(--space-5); }
+.cph-search { flex: 1 1 280px; display: flex; align-items: center; gap: var(--space-2);
+  background: var(--c-surface-alt); border: 1px solid var(--c-border); border-radius: var(--radius-sm);
+  padding: .625rem .875rem; }
+.cph-search input { flex: 1; border: none; background: none; font: inherit; color: var(--c-text); outline: none; }
+.cph-search input::placeholder { color: var(--c-text-subtle); }
+.cph-field { display: flex; align-items: center; gap: var(--space-2); background: var(--c-surface-alt);
+  border: 1px solid var(--c-border); border-radius: var(--radius-sm); padding: .625rem .875rem; font-size: var(--fs-body-sm); }
+.cph-field label { color: var(--c-text-muted); font-weight: var(--fw-semibold); }
+
+/* "Last updated" + results line */
+.cph-board__meta { display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0 var(--space-6) var(--space-3); color: var(--c-text-muted); font-size: var(--fs-caption); }
+
+/* The table */
+.cph-flights { width: 100%; border-collapse: collapse; }
+.cph-flights thead th { text-align: left; font-size: var(--fs-overline); letter-spacing: var(--ls-wide);
+  text-transform: uppercase; color: var(--c-text-muted); font-weight: var(--fw-semibold);
+  padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--c-border); background: var(--c-surface-alt); }
+.cph-flights tbody td { padding: var(--space-4); border-bottom: 1px solid var(--c-border); vertical-align: middle; }
+.cph-flights tbody tr:hover { background: var(--c-surface-alt); }
+.cph-flights tbody tr:last-child td { border-bottom: none; }
+
+/* Cell treatments */
+.cph-cell-time { font-family: var(--font-numeric); font-feature-settings: var(--fvn-tabular);
+  font-size: var(--fs-heading-md); font-weight: var(--fw-bold); color: var(--c-brand); white-space: nowrap; }
+.cph-cell-time .is-revised { color: var(--c-text-subtle); font-weight: var(--fw-regular); text-decoration: line-through; margin-right: var(--space-2); font-size: var(--fs-body-sm); }
+.cph-cell-dest { font-weight: var(--fw-semibold); color: var(--c-text); }
+.cph-cell-dest small { display: block; color: var(--c-text-muted); font-weight: var(--fw-regular); font-size: var(--fs-caption); }
+.cph-cell-flight, .cph-cell-term, .cph-cell-gate { font-family: var(--font-numeric); color: var(--c-text); }
+.cph-cell-gate { font-weight: var(--fw-semibold); }
+
+/* Footer / pagination */
+.cph-board__foot { display: flex; justify-content: center; gap: var(--space-3);
+  padding: var(--space-4) var(--space-6) var(--space-6); }
+
+/* Responsive: collapse low-priority columns on narrow screens */
+@media (max-width: 720px) {
+  .cph-flights .col-term, .cph-flights .col-flight { display: none; }
+  .cph-board__controls { flex-direction: column; }
+}

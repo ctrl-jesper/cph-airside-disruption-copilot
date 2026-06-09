@@ -1,0 +1,162 @@
+/* ============================================================================
+   CPH DESIGN TOKENS — POC-FRESH v1
+   Single source of truth for colour, type, space, and elevation.
+
+   Authority of values:
+   - COLOUR primitives are the official Copenhagen Airport brand palette,
+     taken from the CPH brand identity colours PDF (designguide/farver).
+     These hex values are verbatim from the brand kit.
+   - The functional-signal ramp (green/amber/red) is NOT in the brand kit.
+     It is an accessible extension for the operations context; see UI-SPEC.md.
+   - Typography uses CPH Airfield (display) and Open Sans (body), the two
+     typefaces the CPH site and brand use. Open Sans is loaded live by cph.dk.
+
+   Usage:
+   1. Link this FIRST, before cph-components.css and app styles.
+   2. Reference semantic aliases (--c-*), not raw primitives, in UI.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------------------
+   FONTS (self-hosted for offline use; files live in ./fonts/)
+   CPH Airfield is a proprietary CPH brand face: internal/demo use only.
+   Open Sans is OFL-licensed.
+--------------------------------------------------------------------------- */
+@font-face {
+  font-family: "CPH Airfield";
+  src: url("./fonts/CphAirfield-Positive.otf") format("opentype");
+  font-weight: 400 700; font-display: swap;
+}
+@font-face {
+  font-family: "Open Sans"; src: url("./fonts/OpenSans-Regular.ttf") format("truetype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Open Sans"; src: url("./fonts/OpenSans-Medium.ttf") format("truetype");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Open Sans"; src: url("./fonts/OpenSans-SemiBold.ttf") format("truetype");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Open Sans"; src: url("./fonts/OpenSans-Bold.ttf") format("truetype");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+:root {
+  /* =========================================================================
+     1. COLOUR — OFFICIAL BRAND PRIMITIVES (verbatim from the CPH brand kit)
+        Do not use directly in UI; use the semantic aliases in section 3.
+     ========================================================================= */
+  --cph-midnight-blue:  #060E4D;  /* primary; logo, headings, ink            */
+  --cph-evening-blue:   #170D81;  /* deep accent; critical fills             */
+  --cph-twilight-blue:  #4E55AB;  /* interactive accent, links               */
+  --cph-sky-blue:       #88A8ED;  /* light accent, borders on blue surfaces  */
+  --cph-horizon-blue:   #DCE7F7;  /* calm surface; positive/info background   */
+  --cph-sunrise-yellow: #FFDD66;  /* primary accent; attention, highlights   */
+  --cph-sunshine-yellow:#FEF9D8;  /* pale yellow surface                     */
+  --cph-space-black:    #171717;  /* near-black ink                          */
+  --cph-clear-sky-white:#FCFBFA;  /* off-white canvas                        */
+  --cph-misty-grey:     #E6E2DC;  /* warm light grey; lines, wells           */
+  --cph-storm-grey:     #C4BFBB;  /* warm mid grey; muted, departed/closed   */
+
+  /* =========================================================================
+     2. COLOUR — FUNCTIONAL SIGNAL RAMP (extension, NOT brand kit)
+        Accessible green/amber/red for the operations board, tuned deep so
+        they sit with the brand. Use only where ops legibility demands a
+        conventional traffic-light read. See UI-SPEC.md, "Status colour".
+     ========================================================================= */
+  --fn-go-700:    #0F7A40;  --fn-go-100:    #E4F3EA;  --fn-go-200: #BFE3CD;
+  --fn-warn-700:  #9A5B00;  --fn-warn-500:  #C47700;  --fn-warn-100: #FCEFD6;  --fn-warn-200: #F4D79A;
+  --fn-stop-700:  #A3001C;  --fn-stop-600:  #C8102E;  --fn-stop-100: #FBE7EA;  --fn-stop-200: #F3BCC5;
+
+  /* =========================================================================
+     3. COLOUR — SEMANTIC ALIASES (USE THESE)
+     ========================================================================= */
+  /* Brand + interaction */
+  --c-brand:        var(--cph-midnight-blue);
+  --c-brand-deep:   var(--cph-evening-blue);
+  --c-accent:       var(--cph-sunrise-yellow);
+  --c-action:       var(--cph-twilight-blue);
+  --c-action-hover: var(--cph-evening-blue);
+  --c-action-press: var(--cph-midnight-blue);
+  --c-on-brand:     #ffffff;
+  --c-on-accent:    var(--cph-midnight-blue);
+
+  /* Text */
+  --c-text:        var(--cph-midnight-blue);
+  --c-text-strong: var(--cph-space-black);
+  --c-text-muted:  #5b6079;        /* midnight blue mixed toward grey        */
+  --c-text-subtle: #8a8fa6;
+  --c-text-invert: #ffffff;
+  --c-link:        var(--cph-twilight-blue);
+
+  /* Surfaces */
+  --c-canvas:        var(--cph-clear-sky-white);
+  --c-surface:       #ffffff;
+  --c-surface-alt:   #f5f6fb;      /* zebra rows, wells                      */
+  --c-surface-blue:  var(--cph-horizon-blue);
+  --c-surface-yellow:var(--cph-sunshine-yellow);
+  --c-surface-dark:  var(--cph-midnight-blue);
+
+  /* Lines */
+  --c-border:        var(--cph-misty-grey);
+  --c-border-strong: var(--cph-storm-grey);
+  --c-border-blue:   var(--cph-sky-blue);
+  --c-border-focus:  var(--cph-twilight-blue);
+
+  /* -------- Status, BRAND-PURE (matches the public cph.dk calm board) ------ */
+  --c-ontime-bg:   var(--cph-horizon-blue);   --c-ontime-ink:   var(--cph-midnight-blue);
+  --c-attention-bg:var(--cph-sunrise-yellow); --c-attention-ink:var(--cph-midnight-blue);
+  --c-critical-bg: var(--cph-evening-blue);   --c-critical-ink: #ffffff;
+  --c-muted-bg:    var(--cph-misty-grey);     --c-muted-ink:    #5b6079;
+
+  /* -------- Status, FUNCTIONAL (ops extension; conventional traffic light) -- */
+  --c-ok:      var(--fn-go-700);   --c-ok-bg:   var(--fn-go-100);   --c-ok-border:   var(--fn-go-200);
+  --c-warn:    var(--fn-warn-700); --c-warn-bg: var(--fn-warn-100); --c-warn-border: var(--fn-warn-200);
+  --c-danger:  var(--fn-stop-600); --c-danger-bg:var(--fn-stop-100);--c-danger-border:var(--fn-stop-200);
+
+  /* =========================================================================
+     4. TYPOGRAPHY
+     ========================================================================= */
+  --font-display: "CPH Airfield", "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --font-body:    "Open Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-numeric: var(--font-body);                /* times, flight no., gates */
+  --fvn-tabular:  "tnum" 1, "lnum" 1;              /* font-feature-settings    */
+
+  --fs-display-2xl: 3.5rem;   --lh-display-2xl: 1.05;
+  --fs-display-xl:  2.5rem;   --lh-display-xl:  1.08;
+  --fs-display-lg:  2rem;     --lh-display-lg:  1.12;
+  --fs-heading-xl:  1.625rem; --lh-heading-xl:  1.2;
+  --fs-heading-lg:  1.25rem;  --lh-heading-lg:  1.3;
+  --fs-heading-md:  1.0625rem;--lh-heading-md:  1.35;
+  --fs-body-lg:     1.125rem; --lh-body-lg:     1.55;
+  --fs-body:        1rem;     --lh-body:        1.5;
+  --fs-body-sm:     0.875rem; --lh-body-sm:     1.45;
+  --fs-caption:     0.8125rem;--lh-caption:     1.4;
+  --fs-overline:    0.75rem;  --lh-overline:    1.33;
+
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 700;
+  --ls-tight: -0.01em; --ls-normal: 0; --ls-wide: 0.02em; --ls-overline: 0.08em;
+
+  /* =========================================================================
+     5. SPACE (4px base) / RADIUS / ELEVATION / MOTION / LAYOUT
+     ========================================================================= */
+  --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem;
+  --space-5:1.25rem; --space-6:1.5rem; --space-8:2rem; --space-10:2.5rem;
+  --space-12:3rem; --space-16:4rem; --space-20:5rem; --space-24:6rem;
+
+  --radius-xs:3px; --radius-sm:6px; --radius-md:10px; --radius-lg:14px;
+  --radius-xl:20px; --radius-pill:999px;
+
+  --shadow-xs: 0 1px 2px rgba(6,14,77,.06);
+  --shadow-sm: 0 1px 3px rgba(6,14,77,.08), 0 1px 2px rgba(6,14,77,.04);
+  --shadow-md: 0 4px 12px rgba(6,14,77,.08), 0 2px 4px rgba(6,14,77,.05);
+  --shadow-lg: 0 12px 28px rgba(6,14,77,.12), 0 4px 8px rgba(6,14,77,.06);
+  --shadow-focus: 0 0 0 3px rgba(78,85,171,.35);
+
+  --ease-standard: cubic-bezier(.2,0,0,1);
+  --dur-fast:120ms; --dur-base:200ms; --dur-slow:320ms;
+
+  --container-max:1200px; --container-wide:1360px; --header-height:64px;
+}

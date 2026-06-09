@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CPH Departures Board — design-system preview</title>
+  <link rel="stylesheet" href="cph-tokens.css">
+  <link rel="stylesheet" href="cph-components.css">
+  <style>
+    body { margin: 0; padding: var(--space-8); background: var(--c-canvas); }
+    .wrap { max-width: var(--container-max); margin: 0 auto; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); gap: var(--space-4); flex-wrap: wrap; }
+    .swatches { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-8); }
+    .sw { width: 92px; height: 64px; border-radius: var(--radius-sm); border: 1px solid var(--c-border);
+      display: flex; align-items: flex-end; padding: 6px; font-size: 10px; color: #fff; font-family: var(--font-body); }
+  </style>
+</head>
+<body>
+  <div class="wrap cph" id="app">
+    <div class="toolbar">
+      <h1 class="cph-h1">CPH design system &mdash; board preview</h1>
+      <button class="cph-btn cph-btn--ghost" id="modeBtn">Colour mode: Brand-pure</button>
+    </div>
+
+    <!-- ============ DEPARTURES BOARD ============ -->
+    <div class="cph-board">
+      <div class="cph-board__head">
+        <div class="cph-board__tabs" role="tablist">
+          <button class="cph-tab" role="tab" aria-selected="false">Arrivals</button>
+          <button class="cph-tab" role="tab" aria-selected="true">Departures</button>
+        </div>
+        <h2 class="cph-board__headline">Find your departure</h2>
+      </div>
+
+      <div class="cph-board__controls">
+        <div class="cph-search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--c-text-subtle)"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" placeholder="Search for city, airline or flight number...">
+        </div>
+        <div class="cph-field"><label>Date</label><span class="cph-num">9 Jun 2026</span></div>
+        <div class="cph-field"><label>Time</label><span class="cph-num">14:20</span></div>
+      </div>
+
+      <div class="cph-board__meta">
+        <span>There are <strong>132</strong> departures for your search</span>
+        <span>Last updated <span class="cph-num">14:20</span></span>
+      </div>
+
+      <table class="cph-flights">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Destination</th>
+            <th class="col-flight">Flight</th>
+            <th class="col-term">Terminal</th>
+            <th>Gate</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="cph-cell-time">14:35</td>
+            <td class="cph-cell-dest">Stockholm Arlanda <small>SAS</small></td>
+            <td class="cph-cell-flight col-flight">SK1421</td>
+            <td class="cph-cell-term col-term">3</td>
+            <td class="cph-cell-gate">A12</td>
+            <td><span class="cph-status cph-status--ontime">On time</span></td>
+          </tr>
+          <tr>
+            <td class="cph-cell-time">14:40</td>
+            <td class="cph-cell-dest">London Heathrow <small>British Airways</small></td>
+            <td class="cph-cell-flight col-flight">BA811</td>
+            <td class="cph-cell-term col-term">3</td>
+            <td class="cph-cell-gate">A8</td>
+            <td><span class="cph-status cph-status--attention">Boarding</span></td>
+          </tr>
+          <tr>
+            <td class="cph-cell-time">14:50</td>
+            <td class="cph-cell-dest">Oslo Gardermoen <small>Norwegian</small></td>
+            <td class="cph-cell-flight col-flight">DY1741</td>
+            <td class="cph-cell-term col-term">2</td>
+            <td class="cph-cell-gate">B14</td>
+            <td><span class="cph-status cph-status--ontime">Go to gate</span></td>
+          </tr>
+          <tr>
+            <td class="cph-cell-time">15:15</td>
+            <td class="cph-cell-dest">Dubai <small>Emirates &middot; A380</small></td>
+            <td class="cph-cell-flight col-flight">EK152</td>
+            <td class="cph-cell-term col-term">3</td>
+            <td class="cph-cell-gate">C34</td>
+            <td><span class="cph-status cph-status--ontime">On time</span></td>
+          </tr>
+          <tr>
+            <td class="cph-cell-time"><span class="is-revised cph-num">14:55</span>15:30</td>
+            <td class="cph-cell-dest">Frankfurt <small>Lufthansa</small></td>
+            <td class="cph-cell-flight col-flight">LH835</td>
+            <td class="cph-cell-term col-term">3</td>
+            <td class="cph-cell-gate">B6</td>
+            <td><span class="cph-status cph-status--attention">New time</span></td>
+          </tr>
+          <tr>
+            <td class="cph-cell-time">15:00</td>
+            <td class="cph-cell-dest">Amsterdam <small>KLM</small></td>
+            <td class="cph-cell-flight col-flight">KL1126</td>
+            <td class="cph-cell-term col-term">3</td>
+            <td class="cph-cell-gate">C30</td>
+            <td><span class="cph-status cph-status--muted">Gate closed</span></td>
+          </tr>
+          <tr>
+            <td class="cph-cell-time">15:10</td>
+            <td class="cph-cell-dest">Paris Charles de Gaulle <small>Air France</small></td>
+            <td class="cph-cell-flight col-flight">AF1265</td>
+            <td class="cph-cell-term col-term">2</td>
+            <td class="cph-cell-gate">D2</td>
+            <td><span class="cph-status cph-status--critical">Cancelled</span></td>
+          </tr>
+          <tr>
+            <td class="cph-cell-time">14:25</td>
+            <td class="cph-cell-dest">Aalborg <small>Wider&oslash;e</small></td>
+            <td class="cph-cell-flight col-flight">WF402</td>
+            <td class="cph-cell-term col-term">2</td>
+            <td class="cph-cell-gate">B20</td>
+            <td><span class="cph-status cph-status--muted">Departed</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="cph-board__foot">
+        <button class="cph-btn cph-btn--ghost">Show previous flights</button>
+        <button class="cph-btn cph-btn--primary">Show more</button>
+      </div>
+    </div>
+
+    <!-- ============ PALETTE SWATCHES ============ -->
+    <div class="swatches">
+      <div class="sw" style="background:#060E4D">Midnight</div>
+      <div class="sw" style="background:#170D81">Evening</div>
+      <div class="sw" style="background:#4E55AB">Twilight</div>
+      <div class="sw" style="background:#88A8ED;color:#060E4D">Sky</div>
+      <div class="sw" style="background:#DCE7F7;color:#060E4D">Horizon</div>
+      <div class="sw" style="background:#FFDD66;color:#060E4D">Sunrise</div>
+      <div class="sw" style="background:#FEF9D8;color:#060E4D">Sunshine</div>
+      <div class="sw" style="background:#171717">Space Black</div>
+      <div class="sw" style="background:#FCFBFA;color:#060E4D">Clear Sky</div>
+      <div class="sw" style="background:#E6E2DC;color:#060E4D">Misty</div>
+      <div class="sw" style="background:#C4BFBB;color:#060E4D">Storm</div>
+    </div>
+  </div>
+
+  <script>
+    const app = document.getElementById('app');
+    const btn = document.getElementById('modeBtn');
+    btn.addEventListener('click', () => {
+      const fn = app.classList.toggle('is-functional');
+      btn.textContent = 'Colour mode: ' + (fn ? 'Functional (ops)' : 'Brand-pure');
+    });
+  </script>
+</body>
+</html>
