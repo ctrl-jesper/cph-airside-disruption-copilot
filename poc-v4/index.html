@@ -3249,22 +3249,46 @@ function v4PickBusyStand(t) {
     .filter(sid => { const s = STANDS.find(x => x.id === sid); return s && s.type === 'contact' && !v4sim.oos.has(sid); });
   return on[0] || STANDS.filter(s => s.type === 'contact' && !v4sim.oos.has(s.id)).map(s => s.id)[0] || null;
 }
-function v4InjectType(type) {
-  const t = Math.round(v4.now), cfg = V4_DISRUPT[type];
+// Build one {type, time, target, params, duration} record without side effects.
+// forceTarget pins the target (a stand id, a handler name, or a flight id); otherwise
+// the same auto-targeting the single inject buttons use. Returns null if nothing fits.
+function v4MakeRecord(type, t, forceTarget) {
+  const cfg = V4_DISRUPT[type];
   let target = null, params = {}, desc = '', duration = null;
-  if (type === 'standOffline') { target = v4PickBusyStand(t); duration = cfg.dur; desc = 'Stand ' + target + ' offline for ' + duration + ' min'; }
+  if (type === 'standOffline') { target = forceTarget || v4PickBusyStand(t); if (!target) return null; duration = cfg.dur; desc = 'Stand ' + target + ' offline for ' + duration + ' min'; }
   else if (type === 'handlerCap') {
-    const cnt = {}; FEED.filter(f => f.dir === 'arr' && f.predOn > t && f.predOn < t + 120).forEach(f => cnt[f.handler] = (cnt[f.handler] || 0) + 1);
-    target = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || 'Aviator';
-    params = { cap: Math.max(1, (handlerCapacity(target) || 4) - 2) }; duration = cfg.dur;
+    let h = forceTarget;
+    if (!h) { const cnt = {}; FEED.filter(f => f.dir === 'arr' && f.predOn > t && f.predOn < t + 120).forEach(f => cnt[f.handler] = (cnt[f.handler] || 0) + 1); h = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || 'Aviator'; }
+    target = h; params = { cap: Math.max(1, (handlerCapacity(target) || 4) - 2) }; duration = cfg.dur;
     desc = target + ' capacity cut to ' + params.cap + ' for ' + duration + ' min';
   } else {
-    const f = type === 'depDelay' ? v4NextDep(t) : v4NextArr(t);
-    if (!f) return; target = f.id; params = { min: cfg.min }; desc = cfg.label + ': ' + f.id + ' by ' + cfg.min + ' min';
+    const f = forceTarget ? FEED.find(x => x.id === forceTarget) : (type === 'depDelay' ? v4NextDep(t) : v4NextArr(t));
+    if (!f) return null; target = f.id; params = { min: cfg.min }; desc = cfg.label + ': ' + f.id + ' by ' + cfg.min + ' min';
   }
-  if (!target) return;
-  const d = { id: 'D' + (++V4_DID), type, time: t, target, params, duration, applied: false, cleared: false, desc };
+  return { id: 'D' + (++V4_DID), type, time: t, target, params, duration, applied: false, cleared: false, desc };
+}
+function v4InjectType(type) {
+  const t = Math.round(v4.now), d = v4MakeRecord(type, t);
+  if (!d) return;
   v4sim.disruptions.push(d);
+  v4ApplyDue(t);
+  if (v4sim.optimize) { v4sim.lastSolveAt = -1; v4MaybeSolve(); }
+  v4Render();
+}
+// One-click: stage the whole case brief at the current clock as one replayable set.
+// Central stand out of service, a wave of off-slot arrivals (a few early and late on the
+// next inbounds), a departure delay into the next turnaround, and the handler capacity cut.
+// Each is a normal disruption record, so the continuous optimizer reacts, the realized ledger
+// accrues, the Downstream Projection shows the cascade, and the set saves and replays with the run.
+function v4RunCaseScenario() {
+  const t = Math.round(v4.now), recs = [], add = d => { if (d) recs.push(d); };
+  add(v4MakeRecord('standOffline', t));                                  // central stand out of service
+  const wave = FEED.filter(f => f.dir === 'arr' && f.plannedStand && f.predOn > t && f.predOn < t + 180)
+    .sort((a, b) => a.predOn - b.predOn).slice(0, 4);                    // a wave of off-slot arrivals
+  wave.forEach((f, i) => add(v4MakeRecord(i % 2 === 0 ? 'earlyArrival' : 'lateArrival', t, f.id)));
+  add(v4MakeRecord('depDelay', t));                                      // a departure slip into the next turnaround
+  add(v4MakeRecord('handlerCap', t));                                    // the handler capacity cut (concurrency model)
+  recs.forEach(d => v4sim.disruptions.push(d));
   v4ApplyDue(t);
   if (v4sim.optimize) { v4sim.lastSolveAt = -1; v4MaybeSolve(); }
   v4Render();
@@ -3332,7 +3356,9 @@ function v4DisruptPanel() {
   const rows = v4sim.disruptions.slice().reverse().map(d =>
     '<tr><td>' + v4fmt(d.time) + '</td><td>' + V4_DISRUPT[d.type].label + '</td><td>' + d.target + '</td><td>' + status(d) + '</td></tr>').join('');
   el.innerHTML =
-    '<div class="disrupt-bar"><span class="disrupt-lbl">Inject at ' + v4fmt(v4.now) + '</span>' + order.map(btn).join('') +
+    '<div class="disrupt-bar"><button class="btn-primary" onclick="v4RunCaseScenario()" title="Stage the full case brief at once: central stand offline, a wave of off-slot arrivals, a departure delay into the next turnaround, and a handler capacity cut. One replayable set.">Run the case scenario</button>' +
+    '<span class="hint">stages the whole brief at the current clock as one replayable set</span></div>' +
+    '<div class="disrupt-bar"><span class="disrupt-lbl">Or isolate one at ' + v4fmt(v4.now) + '</span>' + order.map(btn).join('') +
     (v4sim.disruptions.length ? '<button class="btn-ghost" onclick="v4ClearDisruptions()">Clear all</button>' : '') + '</div>' +
     (v4sim.disruptions.length
       ? '<table class="mini"><tr><th>Time</th><th>Disruption</th><th>Target</th><th>Status</th></tr>' + rows + '</table>'
