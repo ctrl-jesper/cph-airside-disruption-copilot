@@ -3080,7 +3080,9 @@ function v4Sankey() {
   const onConnS = conS - riskS, onConnN = conN - riskN, landS = paxS - conS, landN = paxN - conN;
   const onConn = onConnS + onConnN, atRisk = riskS + riskN, land = landS + landN;
   const deps = FEED.filter(f => f.dir === 'dep' && f.predOn >= t && f.predOn < t + H).sort((a, b) => a.predOn - b.predOn).slice(0, 6);
-  const depW = deps.reduce((x, d) => x + (d.pax || 0), 0) || 1; deps.forEach(d => d._on = onConn * ((d.pax || 0) / depW));
+  const depW = deps.reduce((x, d) => x + (d.pax || 0), 0) || 1;
+  const earlyDeps = deps.slice(0, 3), earlyW = earlyDeps.reduce((x, d) => x + (d.pax || 0), 0) || 1;   // tight connections miss the soonest departures
+  deps.forEach(d => { d._on = onConn * ((d.pax || 0) / depW); d._risk = earlyDeps.includes(d) ? atRisk * ((d.pax || 0) / earlyW) : 0; });
   all.sort((a, b) => b.pax - a.pax);
   const shown = all.slice(0, 9), rest = all.slice(9);
   const restS = rest.filter(a => a.zone === 'S').reduce((x, a) => x + a.pax, 0), restN = rest.filter(a => a.zone === 'N').reduce((x, a) => x + a.pax, 0);
@@ -3098,7 +3100,7 @@ function v4Sankey() {
   addNode(3, 'on_conn', onConn, 'Connections', Math.round(onConn) + ' pax', '#dce7f7', '#1b2350', '<b>Connections on time</b><br>' + Math.round(onConn) + ' connecting passengers');
   addNode(3, 'on_risk', atRisk, 'At risk', Math.round(atRisk) + ' pax', atRisk > 0 ? '#170d81' : '#dce7f7', atRisk > 0 ? '#fff' : '#1b2350', '<b>Connections at risk</b><br>' + Math.round(atRisk) + ' connecting passengers (delayed inbound or bussed from a remote stand)', atRisk > 0);
   addNode(3, 'on_land', land, 'Landside', Math.round(land) + ' pax', '#e6e2dc', '#1b2350', '<b>Landside exit</b><br>' + Math.round(land) + ' passengers ending their journey at CPH');
-  if (deps.length) deps.forEach(d => addNode(4, 'd_' + d.id, d._on, d.id, d.to || '', '#dce7f7', '#1b2350', '<b>' + d.id + '</b> &rarr; ' + (d.to || '') + ' &middot; dep ' + fmt(d.predOn) + '<br>' + Math.round(d._on) + ' connecting'));
+  if (deps.length) deps.forEach(d => addNode(4, 'd_' + d.id, d._on + d._risk, d.id, d.to || '', d._risk > 0 ? '#cdd8ef' : '#dce7f7', '#1b2350', '<b>' + d.id + '</b> &rarr; ' + (d.to || '') + ' &middot; dep ' + fmt(d.predOn) + '<br>' + Math.round(d._on + d._risk) + ' connecting' + (d._risk > 0 ? ', ' + Math.round(d._risk) + ' at risk' : '')));
   else addNode(4, 'd_none', onConn, 'Onward', 'departures', '#dce7f7', '#1b2350', 'Onward departures');
   const layout = (items, x) => { if (!items.length) return; const total = items.reduce((a, n) => a + n.value, 0) || 1, gap = 9, availH = Hs - top - bot - gap * (items.length - 1), scale = availH / total; let y = top; items.forEach(n => { n.h = Math.max(14, n.value * scale); n.x = x; n.y = y; y += n.h + gap; }); const off = Math.max(0, (Hs - top - bot - (y - gap - top)) / 2); items.forEach(n => { n.y += off; n.outCur = n.y; n.inCur = n.y; }); };
   order.forEach((items, i) => layout(items, colX[i]));
@@ -3108,7 +3110,10 @@ function v4Sankey() {
   L('pa_S', 'pc_S', paxS, '#88a8ed', paxS + ' pax'); L('pa_N', 'pc_N', paxN, peakN > 200 ? '#170d81' : '#88a8ed', paxN + ' pax');
   L('pc_S', 'on_conn', onConnS, '#88a8ed', Math.round(onConnS) + ' on time'); L('pc_S', 'on_risk', riskS, '#170d81', Math.round(riskS) + ' at risk'); L('pc_S', 'on_land', landS, '#cdd8ef', Math.round(landS) + ' landside');
   L('pc_N', 'on_conn', onConnN, '#88a8ed', Math.round(onConnN) + ' on time'); L('pc_N', 'on_risk', riskN, '#170d81', Math.round(riskN) + ' at risk'); L('pc_N', 'on_land', landN, '#cdd8ef', Math.round(landN) + ' landside');
-  if (deps.length) deps.forEach(d => L('on_conn', 'd_' + d.id, d._on, '#88a8ed', '<b>Connections &rarr; ' + d.id + '</b><br>' + Math.round(d._on) + ' pax')); else L('on_conn', 'd_none', onConn, '#88a8ed', Math.round(onConn) + ' pax');
+  if (deps.length) deps.forEach(d => {
+    L('on_conn', 'd_' + d.id, d._on, '#88a8ed', '<b>On time &rarr; ' + d.id + '</b><br>' + Math.round(d._on) + ' connecting pax');
+    L('on_risk', 'd_' + d.id, d._risk, '#170d81', '<b>At risk &rarr; ' + d.id + '</b> (' + (d.to || '') + ', dep ' + fmt(d.predOn) + ')<br>' + Math.round(d._risk) + ' connecting pax may miss this departure');
+  }); else L('on_conn', 'd_none', onConn, '#88a8ed', Math.round(onConn) + ' pax');
   let svg = '';
   ['ARRIVALS', 'PASSPORT', 'PASSPORT CONTROL', 'OUTCOME', 'ONWARD'].forEach((h, i) => svg += '<text x="' + (colX[i] + nodeW / 2) + '" y="18" text-anchor="middle" font-size="11" font-weight="700" fill="#6b7299">' + h + '</text>');
   links.forEach(lk => {
