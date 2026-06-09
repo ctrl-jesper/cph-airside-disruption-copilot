@@ -500,8 +500,8 @@
       <div class="tab" data-tab="optimize" onclick="showTab('optimize')">Optimize<span class="pill-n" id="optTabN">0</span></div>
       <div class="tab" data-tab="pareto" onclick="showTab('pareto')">Trade-offs</div>
       <div class="tab" data-tab="changes" onclick="showTab('changes')">Event log<span class="pill-n" id="changesTabN">0</span></div>
-      <div class="tab" data-tab="twin" onclick="showTab('twin')">Digital twin</div>
-      <div class="tab" data-tab="value" onclick="showTab('value')">Value</div>
+      <div class="tab" data-tab="twin" onclick="showTab('twin')">Downstream Projection</div>
+      <div class="tab" data-tab="value" onclick="showTab('value')">Value Recovery</div>
       <div class="tab" data-tab="gov" onclick="showTab('gov')">Governance</div>
       <div class="tab" data-tab="defs" onclick="showTab('defs')">Definitions</div>
       <div class="tab" data-tab="config" onclick="showTab('config')">Config</div>
@@ -509,7 +509,7 @@
 
     <section class="tabpane active" id="pane-apron">
       <div id="apronView"></div>
-      <p class="note"><b>Read-only.</b> This board is the live picture. The Optimize, Trade-offs, and Digital twin tabs all read from exactly this data. The system proposes, a person accepts, and every committed assignment is revalidated continuously against this picture.</p>
+      <p class="note"><b>Read-only.</b> This board is the live picture. The Optimize, Trade-offs, and Downstream Projection tabs all read from exactly this data. The system proposes, a person accepts, and every committed assignment is revalidated continuously against this picture.</p>
     </section>
 
     <section class="tabpane" id="pane-feed">
@@ -556,7 +556,7 @@
     </section>
 
     <section class="tabpane" id="pane-twin">
-      <p class="twin-intro">The optimizer places aircraft for the picture as it is now. The digital twin runs the clock on from the feed time and reveals the second-order consequences a snapshot cannot see: an early-turnaround delay propagating along an aircraft's rotation to push later legs off-slot, and connecting passengers coming under threat as their inbound flight slips or is sent to a remote stand. This is the depth-over-time the per-flight tool cannot reach, projected over the current allocation.</p>
+      <p class="twin-intro">The optimizer places aircraft for the picture as it is now. The Downstream Projection runs the clock on from the feed time and reveals the second-order consequences a snapshot cannot see: an early-turnaround delay propagating along an aircraft's rotation to push later legs off-slot, and connecting passengers coming under threat as their inbound flight slips or is sent to a remote stand. This is the depth-over-time the per-flight tool cannot reach, projected over the current allocation.</p>
 
       <button class="btn-primary" id="twinBtn" onclick="v4TwinNow()">Project the current allocation forward</button>
       <span class="hint" id="twinClock" style="margin-left:10px"></span>
@@ -565,7 +565,7 @@
     </section>
 
     <section class="tabpane" id="pane-value">
-      <p class="opt-intro"><b>Value delivered</b> is the headline: the cost the copilot recovers when a stand fails and the plan breaks, on a representative disruption, scaled to a year. <b>Realized cost</b> traces what a 48-hour run incurs minute by minute. <b>Four-case projection</b> is the V3 forward model. Three lenses on one question, the business value of optimizing under disruption.</p>
+      <p class="opt-intro"><b>Value delivered</b> is the headline: the cost the copilot recovers when a stand fails and the plan breaks, on a representative disruption, scaled to a year. <b>Realized cost</b> traces what a 48-hour run incurs minute by minute. Two lenses on one question, the business value of optimizing under disruption.</p>
       <div id="valueUI" style="margin-top:14px"></div>
     </section>
 
@@ -1881,61 +1881,13 @@ function renderDeliveredHTML() {
 function valueViewSwitch() {
   return '<div class="vview-seg">' +
     '<button class="' + (valueView === 'delivered' ? 'on' : '') + '" onclick="setValueView(\'delivered\')">Value delivered</button>' +
-    '<button class="' + (valueView === 'realized' ? 'on' : '') + '" onclick="setValueView(\'realized\')">Realized cost · 48h run</button>' +
-    '<button class="' + (valueView === 'projection' ? 'on' : '') + '" onclick="setValueView(\'projection\')">Four-case projection</button></div>';
+    '<button class="' + (valueView === 'realized' ? 'on' : '') + '" onclick="setValueView(\'realized\')">Realized cost · 48h run</button></div>';
 }
 
 function renderValueView() {
   const el = document.getElementById('valueUI'); if (!el) return;
-  if (valueView === 'delivered') { el.innerHTML = valueViewSwitch() + renderDeliveredHTML(); return; }
   if (valueView === 'realized') { el.innerHTML = valueViewSwitch() + renderRealizedHTML(); return; }
-  if (!valueResult) {
-    el.innerHTML = valueViewSwitch() +
-      '<button class="btn-primary" id="valueBtn" onclick="runValueCases()" style="margin-bottom:12px">Compute value cases</button>' +
-      '<p class="cap">The four-case projection runs the four operating policies against the same single disruption and charts their cost over the afternoon. Click to compute.</p>';
-    return;
-  }
-  const metric = valueMode;
-  const W = 900, H = 360, pl = 64, pb = 44, pt = 16, pr = 132;
-  const xs = valueResult[0].curve.xs;
-  const vals = valueResult.flatMap(c => c.curve[metric]).concat(valueMC ? valueMC.flatMap(m => m.hi) : []);
-  const ymax = Math.max(1, ...vals);
-  const sx = t => pl + (t - SIM_T0) / (SIM_T1 - SIM_T0) * (W - pl - pr);
-  const sy = v => (H - pb) - v / ymax * (H - pb - pt);
-  let svg = '';
-  for (let gy = 0; gy <= 4; gy++) { const v = ymax * gy / 4, y = sy(v); svg += '<line x1="' + pl + '" y1="' + y.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + y.toFixed(1) + '" stroke="#eef2fa"/><text x="' + (pl - 8) + '" y="' + (y + 3).toFixed(1) + '" font-size="10" fill="#6b7299" text-anchor="end">' + eur(v) + '</text>'; }
-  for (let tk = SIM_T0; tk <= SIM_T1; tk += 30) svg += '<text x="' + sx(tk).toFixed(1) + '" y="' + (H - pb + 16) + '" font-size="10" fill="#6b7299" text-anchor="middle">' + fmt(tk) + '</text>';
-  if (valueMC) valueResult.forEach((c, ci) => {
-    const m = valueMC[ci]; let up = '', dn = '';
-    xs.forEach((t, k) => { up += sx(t).toFixed(1) + ',' + sy(metric === 'cum' ? m.hi[k] : c.curve.rate[k]).toFixed(1) + ' '; });
-    for (let k = xs.length - 1; k >= 0; k--) up += sx(xs[k]).toFixed(1) + ',' + sy(metric === 'cum' ? m.lo[k] : c.curve.rate[k]).toFixed(1) + ' ';
-    if (metric === 'cum') svg += '<polygon points="' + up + '" fill="' + c.color + '" fill-opacity="0.12"/>';
-  });
-  valueResult.forEach(c => {
-    const pts = xs.map((t, k) => sx(t).toFixed(1) + ',' + sy(c.curve[metric][k]).toFixed(1)).join(' ');
-    svg += '<polyline points="' + pts + '" fill="none" stroke="' + c.color + '" stroke-width="2.4"/>';
-  });
-  svg += '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/><line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/>';
-  svg += '<text x="14" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 14 ' + (H / 2) + ')">' + (metric === 'cum' ? 'Cumulative cost (€)' : 'Cost rate (€ / 5 min)') + '</text>';
-  valueResult.forEach((c, i) => { const ly = pt + 8 + i * 20, lx = W - pr + 12; svg += '<line x1="' + lx + '" y1="' + ly + '" x2="' + (lx + 18) + '" y2="' + ly + '" stroke="' + c.color + '" stroke-width="3"/><text x="' + (lx + 24) + '" y="' + (ly + 4) + '" font-size="11" fill="#1b2350">' + c.label + '</text>'; });
-
-  const baseTot = valueResult[0].curve.total;
-  const cards = valueResult.map(c => {
-    const save = baseTot - c.curve.total;
-    const sub = c.id === 'base' ? 'the do-nothing baseline'
-      : 'saves ' + eur(save) + ' vs do nothing' + (valueMC ? ' · exp. ' + eur(baseTot - valueMC[valueResult.indexOf(c)].meanTotal) : '');
-    return '<div class="vcase"><div class="vc-dot" style="background:' + c.color + '"></div><div><div class="vc-l">' + c.label + '</div>' +
-      '<div class="vc-n">' + eur(c.curve.total) + '</div><div class="vc-s">' + sub + '</div></div></div>';
-  }).join('');
-
-  el.innerHTML = valueViewSwitch() +
-    '<div class="value-controls"><div class="vseg"><button class="' + (valueMode === 'cum' ? 'on' : '') + '" onclick="setValueMode(\'cum\')">Cumulative €</button>' +
-    '<button class="' + (valueMode === 'rate' ? 'on' : '') + '" onclick="setValueMode(\'rate\')">Cost rate</button></div>' +
-    '<button class="btn-ghost" id="valueMcBtn" onclick="runValueMonteCarlo()">' + (valueMC ? 'Re-run Monte Carlo' : 'Add Monte Carlo band') + '</button>' +
-    (valueMC ? '<span class="chip ok">Case C beats Base in <b>' + valueMC.cBeatsBase + '%</b> of ' + valueMC.draws + ' scenarios</span>' : '') + '</div>' +
-    '<div class="gantt-box"><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:380px">' + svg + '</svg></div>' +
-    '<div class="vcases">' + cards + '</div>' +
-    '<p class="cap">All four policies face the same reality: a stand fault (E30, C26). Case A optimizes once before the fault is known, so the twin catches its plan on failed stands; B and C re-optimize against the current picture, and C shifts weight to the binding resource (' + (valueResult.binding || 'passenger') + '). The twin judges every policy against full reality. Cost drivers (€' + CONFIG.unit.connection + '/connection, €' + VALUE.eurDelayMin + '/delay-minute, €' + CONFIG.unit.busTrip + '/bus, €' + CONFIG.unit.tow + '/tow) are assumptions set in Config.</p>';
+  el.innerHTML = valueViewSwitch() + renderDeliveredHTML();
 }
 
 // Phase V4.6: the realized-cost sub-view of the Value tab (the 48-hour incurred ledger).
@@ -2082,7 +2034,7 @@ function selectStrategy(idx) {
   window.__selectedStrategy = { idx, alloc: p.alloc, f: p.f, key: sigByIdx[idx] || null };
   document.getElementById('selHead').innerHTML = 'Selected: <span style="color:var(--evening)">' + label + '</span> · passenger ' +
     p.f.passenger.toFixed(0) + ' · handler ' + p.f.handler.toFixed(0) + ' · schedule ' + p.f.schedule.toFixed(0) +
-    ' &nbsp; <span class="band">the Digital twin projects this allocation forward</span>';
+    ' &nbsp; <span class="band">the Downstream Projection projects this allocation forward</span>';
   renderAllocationInto('paretoAlloc', p.alloc);
   renderValuePanel('paretoValue', p.alloc, new Set());
   renderScatter();
@@ -2303,6 +2255,10 @@ async function computeCounterfactuals() {
     return { ...v, peak: {
       qN: Math.round(Math.max(...sim.steps.map(s => s.qN))),
       qS: Math.round(Math.max(...sim.steps.map(s => s.qS))),
+      walk: Math.round(reallocFlights().reduce((a, f) => {
+        const sid = v.alloc[f.id]; const s = (sid && sid !== 'ESC') ? standById(sid) : null;
+        return a + (s ? (f.pax || 0) * (s.walk || 0) : 0);
+      }, 0)),
       conn: sim.steps[sim.steps.length - 1].connRisk,
       slips: sim.slips,
       hPeak: Math.round(Math.max(...sim.steps.map(s => s.hPeak)) * 100),
@@ -2318,6 +2274,7 @@ function renderCounterfactual() {
   const rows = [
     { k: 'qN', label: 'Non-Schengen passport peak', unit: 'waiting' },
     { k: 'qS', label: 'Schengen passport peak', unit: 'waiting' },
+    { k: 'walk', label: 'Passenger walk', unit: 'pax·min' },
     { k: 'conn', label: 'Connections at risk', unit: 'pax' },
     { k: 'slips', label: 'Turnarounds slipping', unit: '' },
     { k: 'hPeak', label: 'Peak handler load', unit: '%' },
@@ -3482,8 +3439,8 @@ const PANE_TITLES = {
   optimize: ['Whole-apron optimization', 'One pass, solved as a binary mixed-integer program'],
   pareto: ['Trade-off front', 'Non-dominated strategies, the human chooses which to accept'],
   changes: ['Event log', 'Decisions, strategy changes, and picture changes, continuously revalidated against the live picture'],
-  twin: ['Digital twin', 'Project the chosen allocation forward to reveal the cascade'],
-  value: ['Business value', 'What the copilot recovers when the plan breaks, per disruption and annualised'],
+  twin: ['Downstream Projection', 'Project the chosen allocation forward to reveal the cascade'],
+  value: ['Value Recovery', 'What the copilot recovers when the plan breaks, per disruption and annualised'],
   gov: ['Governance and EU AI Act', 'How the system is classified and what keeps it compliant'],
   defs: ['Definitions', 'The concepts, scores, and units behind the solution'],
   config: ['Config', 'Governed policy constants. A change re-runs the optimization. Defaults reproduce the base scenario'],
