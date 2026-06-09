@@ -3051,8 +3051,27 @@ async function v4TwinNow() {
     return '<div class="rot-row"><span class="rot-tail">' + r.tail + '</span><div class="rot-chain">' + chain + '</div></div>';
   }).join('') : '<p class="cap" style="margin:4px 0 0">No propagated delay in this horizon. Inject a late arrival or longer turnaround on the feed to see the cascade.</p>';
   const rotBox = '<div class="opt-moves"><h4>Rotation delay cascade <span class="band">aircraft with a delayed leg, worst first</span></h4>' + rotHtml + '</div>';
-  document.getElementById('twinUI').innerHTML = cards + chart + rotBox +
-    '<p class="cap">Scoped to the feed: the twin projects the current allocation forward and surfaces propagated rotation delay and connection risk. It does not model passport queues or baggage belts; those need a passenger-flow model a production build would add.</p>';
+  const sankeyBox = '<div class="gantt-box"><h4>Passenger-flow Sankey <span class="band">worked example: the connection consequences a stand fault creates, which the feed-level view cannot see</span></h4>' +
+    '<p class="hint">A representative disrupted afternoon, passengers flowing from stand to passport control to the connection bank and onward departures. Ribbon width is passengers; a node turns deep blue when it congests. Hover any node or ribbon for detail. This is the passenger-flow depth a production build would add to the live feed.</p>' +
+    '<div id="sankeySvg"></div></div><div class="sankey-tip" id="sankeyTip"></div>';
+  document.getElementById('twinUI').innerHTML = cards + chart + rotBox + sankeyBox +
+    '<p class="cap">Two layers: the live projection over the current feed allocation (rotation delay and connection risk above), and the passenger-flow worked example (the Sankey), which models the passport and connection cascade the feed does not yet carry.</p>';
+  await v4RenderSankey();
+}
+// Worked-example passenger-flow Sankey: the V3 digital-twin model run on a representative
+// stand-fault afternoon. The live feed does not model passport queues or the connection bank, so
+// this is a labelled worked example, like the four-case projection, kept for its demo value.
+async function v4RenderSankey() {
+  const el = document.getElementById('sankeySvg'); if (!el || !window.__glpkReady) return;
+  const saved = state.disruptions;
+  state.disruptions = { standFaults: true, handlerShortage: false, standCrunch: false };
+  try {
+    const sol = await valueSolve(DEFAULT_WEIGHTS, { standFaults: true });
+    const sim = simulateTwin(sol.alloc, sol.towed);
+    window.__twin = { ...sim, idx: sim.steps.length - 1 };
+    renderSankey();
+  } catch (e) { console.error('sankey', e); if (el) el.innerHTML = '<p class="cap">Sankey unavailable.</p>'; }
+  finally { state.disruptions = saved; }
 }
 
 function v4MaybeSolve() {
