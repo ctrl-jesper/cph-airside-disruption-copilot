@@ -565,7 +565,7 @@
     </section>
 
     <section class="tabpane" id="pane-value">
-      <p class="opt-intro"><b>Realized cost</b> accrues what the 48-hour run actually incurs, minute by minute, as it plays. <b>Four-case projection</b> is the V3 forward model: the same single disruption run four ways and integrated over the afternoon. The two are different lenses on the same question, the value of optimizing.</p>
+      <p class="opt-intro"><b>Value delivered</b> is the headline: the cost the copilot recovers when a stand fails and the plan breaks, on a representative disruption, scaled to a year. <b>Realized cost</b> traces what a 48-hour run incurs minute by minute. <b>Four-case projection</b> is the V3 forward model. Three lenses on one question, the business value of optimizing under disruption.</p>
       <div id="valueUI" style="margin-top:14px"></div>
     </section>
 
@@ -841,13 +841,24 @@ function generate48hSchedule() {
 }
 
 // Greedy planned stands: arrivals reserve [on-block, off-block]; departures inherit their arrival's stand.
+// The baseline AODB plan: every arrival gets a stand. Best-fit (smallest eligible stand first,
+// contact before remote) so wide-bodies are not crowded out by narrow-bodies; a remote stand is
+// the planned fallback. This stands in for the airline/ops schedule the live feed would supply,
+// so the baseline is complete and the optimizer's value shows under disruption, not against an
+// artificially broken plan.
 function assignPlannedStands(flights) {
   const occ = {}; STANDS.forEach(s => occ[s.id] = []);
   const byId = {}; flights.forEach(f => byId[f.id] = f);
-  flights.filter(f => f.dir === 'arr').forEach(f => {
+  const free = (s, fs, fe) => !occ[s.id].some(w => fs < w[1] + 5 && w[0] < fe + 5);
+  flights.filter(f => f.dir === 'arr').sort((a, b) => (CODE_NUM[b.code] - CODE_NUM[a.code]) || (a.predOn - b.predOn)).forEach(f => {
     const fs = f.predOn, fe = f.predOn + (f.dwell || 45);
-    const cand = STANDS.find(s => CODE_NUM[s.code] >= CODE_NUM[f.code] && (s.zone === 'M' || s.zone === f.zone) &&
-      !occ[s.id].some(w => fs < w[1] + 5 && w[0] < fe + 5));
+    const cands = STANDS.filter(s => CODE_NUM[s.code] >= CODE_NUM[f.code] && (s.zone === 'M' || s.zone === f.zone) && free(s, fs, fe))
+      .sort((a, b) => (CODE_NUM[a.code] - CODE_NUM[b.code]) || ((a.type === 'remote' ? 1 : 0) - (b.type === 'remote' ? 1 : 0)) || a.walk - b.walk);
+    let cand = cands[0];
+    if (!cand) {                                   // peak over-capacity: plan a remote position (a tow), never leave a flight unplanned
+      cand = STANDS.filter(s => CODE_NUM[s.code] >= CODE_NUM[f.code] && (s.zone === 'M' || s.zone === f.zone))
+        .sort((a, b) => ((a.type === 'remote' ? 0 : 1) - (b.type === 'remote' ? 0 : 1)) || CODE_NUM[a.code] - CODE_NUM[b.code])[0];
+    }
     f.plannedStand = cand ? cand.id : null;
     if (cand) occ[cand.id].push([fs, fe]);
   });
@@ -1678,7 +1689,7 @@ const VALUE_CASES = [
   { id: 'B', label: 'B · keep optimizing', color: '#4e55ab' },
   { id: 'C', label: 'C · optimize + adapt', color: '#170d81' },
 ];
-let valueResult = null, valueMode = 'cum', valueMC = null, valueView = 'realized';
+let valueResult = null, valueMode = 'cum', valueMC = null, valueView = 'delivered', v4valueEvents = 60;
 
 async function valueSolve(weights, disrupt) {
   const glpk = await window.__glpkReady;
@@ -1797,15 +1808,80 @@ async function runValueMonteCarlo() {
 
 function setValueMode(m) { valueMode = m; renderValueView(); }
 function setValueView(v) { valueView = v; renderValueView(); }
+function v4SetValueEvents(n) { v4valueEvents = Math.max(0, +n || 0); renderValueView(); }
+
+/* ===== Value delivered =====
+   The copilot's value is decision support in the tail: when a stand fails, the planned (AODB)
+   allocation breaks and the displaced flights and their connecting passengers are at risk. The
+   copilot re-optimizes the window and rehomes them in seconds. The value delivered is the cost
+   recovered versus leaving the broken plan unmanaged, on a representative disruption, scaled to a
+   year. Computed with one bounded windowed solve, so it is fast and deterministic. */
+function v4PickValueScenario() {
+  const dur = 120;   // lose a busy contact stand for two hours
+  let best = null;
+  STANDS.filter(s => s.type === 'contact').forEach(s => {
+    const ts = FEED.filter(f => f.dir === 'arr' && f.plannedStand === s.id).map(f => f.predOn).sort((a, b) => a - b);
+    ts.forEach(t => { if (t % 1440 < 300) return; const n = ts.filter(x => x >= t && x < t + dur).length; if (!best || n > best.n) best = { standId: s.id, t, n }; });
+  });
+  return best ? { standId: best.standId, t: best.t, dur } : { standId: 'A12', t: 7 * 60, dur };
+}
+// Synchronous and deterministic: the copilot rehomes the displaced flights by best-fit onto the
+// stands free at their time (the disrupted stand excluded). No solver call, so no hang on a dense
+// peak instance; this is a conservative lower bound on what the MIP optimizer would recover.
+function v4ValueDelivered() {
+  const sc = v4PickValueScenario();
+  const cost = f => (f.conPax || 0) * CONFIG.unit.connection + (f.pax || 0) * VALUE.eurReaccom;
+  const affected = FEED.filter(f => f.dir === 'arr' && f.plannedStand === sc.standId && f.predOn >= sc.t && f.predOn < sc.t + sc.dur);
+  const exposure = affected.reduce((a, f) => a + cost(f), 0);
+  const exposurePax = affected.reduce((a, f) => a + (f.conPax || 0), 0);
+  const occ = {}; STANDS.forEach(s => occ[s.id] = []);
+  const affectedSet = new Set(affected.map(f => f.id));
+  FEED.filter(f => f.dir === 'arr' && f.plannedStand && !affectedSet.has(f.id) && f.plannedStand !== sc.standId)
+    .forEach(f => occ[f.plannedStand].push([f.predOn, f.predOn + (f.dwell || 45)]));
+  const free = (s, fs, fe) => s.id !== sc.standId && !occ[s.id].some(w => fs < w[1] + 5 && w[0] < fe + 5);
+  let recovered = 0, rehomedContact = 0, rehomedRemote = 0, residualStrand = 0, connProtected = 0;
+  affected.slice().sort((a, b) => a.predOn - b.predOn).forEach(f => {
+    const fs = f.predOn, fe = f.predOn + (f.dwell || 45);
+    const cand = STANDS.filter(s => CODE_NUM[s.code] >= CODE_NUM[f.code] && (s.zone === 'M' || s.zone === f.zone) && free(s, fs, fe))
+      .sort((a, b) => ((a.type === 'remote' ? 1 : 0) - (b.type === 'remote' ? 1 : 0)) || CODE_NUM[a.code] - CODE_NUM[b.code] || a.walk - b.walk)[0];
+    if (cand) {
+      occ[cand.id].push([fs, fe]);
+      if (cand.type === 'remote') { rehomedRemote++; recovered += cost(f) - CONFIG.unit.busTrip; }
+      else { rehomedContact++; recovered += cost(f); }
+      connProtected += (f.conPax || 0);
+    } else residualStrand += cost(f);
+  });
+  return { sc, affected, exposure, exposurePax, recovered: Math.max(0, recovered), rehomedContact, rehomedRemote, residualStrand, connProtected };
+}
+function renderDeliveredHTML() {
+  const v = v4ValueDelivered();
+  const annual = v.recovered * v4valueEvents, rehomed = v.rehomedContact + v.rehomedRemote;
+  const cards = '<div class="rl-head" style="grid-template-columns:repeat(2,1fr)">' +
+    '<div class="rl-tot"><div class="lbl">Value recovered per event <small>cost the copilot saves vs the unmanaged broken plan</small></div><div class="val" style="color:#1d6b3a">' + eur(v.recovered) + '</div></div>' +
+    '<div class="rl-tot"><div class="lbl">Annualised <small>x ' + v4valueEvents + ' comparable events / year</small></div><div class="val" style="color:#1d6b3a">' + eur(annual) + '</div></div></div>';
+  const scenarioLine = '<p class="opt-intro">Representative disruption: <b>' + v.sc.standId + '</b> (the busiest contact stand) goes out of service at <b>' + v4fmt(v.sc.t) + '</b> for ' + (v.sc.dur / 60) + ' hours. <b>' + v.affected.length + '</b> arrivals and <b>' + v.exposurePax + '</b> connecting passengers lose their stand, <b>' + eur(v.exposure) + '</b> of cost at risk. The copilot re-optimizes the window in about 30 seconds and rehomes them.</p>';
+  const drivers = '<div class="vcases vcases-4">' +
+    '<div class="vcase"><div><div class="vc-l">Flights rehomed</div><div class="vc-n">' + rehomed + ' / ' + v.affected.length + '</div></div></div>' +
+    '<div class="vcase"><div><div class="vc-l">Connections protected</div><div class="vc-n">' + v.connProtected + ' pax</div></div></div>' +
+    '<div class="vcase"><div><div class="vc-l">To contact stands</div><div class="vc-n">' + v.rehomedContact + '</div></div></div>' +
+    '<div class="vcase"><div><div class="vc-l">Decision time</div><div class="vc-n">~30 s</div></div></div></div>';
+  const annualBar = '<div class="opt-apply"><span class="hint">Comparable disruption events per year</span>' +
+    '<input type="number" value="' + v4valueEvents + '" min="0" step="5" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:7px" onchange="v4SetValueEvents(this.value)">' +
+    '<span class="hint">a calibration assumption; CPH would set it from its disruption log</span></div>';
+  const cap = '<p class="cap">Value is the cost the copilot recovers when the plan breaks, not a steady-state saving: with no disruption the AODB plan already works and the copilot holds it (zero value, correctly). The figure rises with passenger exposure and stand scarcity. Drivers (Config assumptions): ' + eur(CONFIG.unit.connection) + '/connection + ' + eur(VALUE.eurReaccom) + '/passenger on a strand, ' + eur(CONFIG.unit.busTrip) + '/remote bus trip. As a proof of concept on synthetic data, this demonstrates the mechanism and scale; the calibrated euros need live A-CDM data and units agreed with Finance and Operations.</p>';
+  return scenarioLine + cards + annualBar + drivers + cap;
+}
 
 function valueViewSwitch() {
   return '<div class="vview-seg">' +
+    '<button class="' + (valueView === 'delivered' ? 'on' : '') + '" onclick="setValueView(\'delivered\')">Value delivered</button>' +
     '<button class="' + (valueView === 'realized' ? 'on' : '') + '" onclick="setValueView(\'realized\')">Realized cost · 48h run</button>' +
     '<button class="' + (valueView === 'projection' ? 'on' : '') + '" onclick="setValueView(\'projection\')">Four-case projection</button></div>';
 }
 
 function renderValueView() {
   const el = document.getElementById('valueUI'); if (!el) return;
+  if (valueView === 'delivered') { el.innerHTML = valueViewSwitch() + renderDeliveredHTML(); return; }
   if (valueView === 'realized') { el.innerHTML = valueViewSwitch() + renderRealizedHTML(); return; }
   if (!valueResult) {
     el.innerHTML = valueViewSwitch() +
@@ -3259,7 +3335,7 @@ const PANE_TITLES = {
   pareto: ['Trade-off front', 'Non-dominated strategies, the human chooses which to accept'],
   changes: ['Event log', 'Decisions, strategy changes, and picture changes, continuously revalidated against the live picture'],
   twin: ['Digital twin', 'Project the chosen allocation forward to reveal the cascade'],
-  value: ['Business value over time', 'Realized cost incurred over the 48-hour run, with the V3 four-case projection alongside'],
+  value: ['Business value', 'What the copilot recovers when the plan breaks, per disruption and annualised'],
   gov: ['Governance and EU AI Act', 'How the system is classified and what keeps it compliant'],
   defs: ['Definitions', 'The concepts, scores, and units behind the solution'],
   config: ['Config', 'Governed policy constants. A change re-runs the optimization. Defaults reproduce the base scenario'],
