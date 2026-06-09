@@ -693,6 +693,12 @@
           </dl>
         </section>
 
+        <section>
+          <h3>Disruptions you can inject</h3>
+          <p class="lead">Six disruption types reproduce the case scenario on the 48-hour feed. Each is injected at the current feed time, applied as the clock passes it, and the optimizer reacts on the next cadence. Hover any button on the 48h feed for the short version.</p>
+          <dl id="defsDisrupt"></dl>
+        </section>
+
         <section class="secnote">
           <h3>Data, timing, and governance</h3>
           <dl>
@@ -3240,12 +3246,24 @@ function v4OptPanel() {
    pretend to fix it. Reset regenerates the deterministic FEED and re-arms the set, so a
    rerun replays it; Clear empties it. */
 const V4_DISRUPT = {
-  standOffline: { label: 'Stand offline', dur: 120 },
-  handlerCap:   { label: 'Handler capacity cut', dur: 120 },
-  earlyArrival: { label: 'Early arrival', min: 25 },
-  lateArrival:  { label: 'Late arrival', min: 40 },
-  depDelay:     { label: 'Departure delay', min: 35 },
-  longerTurn:   { label: 'Longer turnaround', min: 40 },
+  standOffline: { label: 'Stand offline', dur: 120,
+    tip: 'A busy contact stand fails for 120 min; aircraft on it must move.',
+    desc: 'A central contact stand is taken out of service for technical reasons. It leaves the available set for the outage, so any committed aircraft on it become forced re-decisions and the optimizer relocates them. Flights planned onto it during the outage strand, or move to a remote stand when no contact stand is free. This is the headline scenario the Value tab is built on.' },
+  handlerCap:   { label: 'Handler capacity cut', dur: 120,
+    tip: 'A handler loses crew; simultaneous turnarounds queue and departures slip.',
+    desc: 'A ground handler cannot service all of its simultaneous turnarounds. Its crew is modelled as a set number of parallel teams working first-come-first-served by on-block time. When more of that handler\'s aircraft are on stand at once than there are teams, the excess wait for a team to free up, which extends those turnarounds and slips their departures. Moving a stand cannot relieve this: the handler is contracted per flight, so the tool detects and prices the delay rather than optimizing it away. Relieving it needs more crew or a re-sequence, which is a human call.' },
+  earlyArrival: { label: 'Early arrival', min: 25,
+    tip: 'An inbound lands 25 min ahead of its slot.',
+    desc: 'An arrival comes in earlier than planned. Its stand-occupancy window shifts earlier and can conflict with the previous occupant. A small shift is absorbed by buffer; a larger one prompts the optimizer to re-solve.' },
+  lateArrival:  { label: 'Late arrival', min: 40,
+    tip: 'An inbound lands 40 min behind its slot, carrying delay.',
+    desc: 'An arrival comes in later than planned and carries the delay. The occupancy window shifts later and the delay propagates along the aircraft\'s rotation, showing in the realized delay cost and the twin cascade.' },
+  depDelay:     { label: 'Departure delay', min: 35,
+    tip: 'A departure slips 35 min, holding its stand and the next turnaround.',
+    desc: 'A departure\'s off-block is pushed back. The aircraft holds its stand longer, so the same aircraft\'s next leg slips, which is the effect on the next turnaround. The rotation cascade in the twin shows the propagation.' },
+  longerTurn:   { label: 'Longer turnaround', min: 40,
+    tip: 'A turnaround runs 40 min long, blocking the stand for the next arrival.',
+    desc: 'A turnaround takes longer than planned, so the aircraft occupies the stand beyond its planned off-block. It can overrun into the next planned arrival on that stand, which forces a reassignment.' },
 };
 let V4_DID = 0;
 function v4NextArr(t) { return FEED.filter(f => f.dir === 'arr' && f.predOn > t && f.predOn < t + 180 && f.plannedStand).sort((a, b) => a.predOn - b.predOn)[0]; }
@@ -3279,12 +3297,29 @@ function v4ApplyOne(d) {
   const f = FEED.find(x => x.id === d.target);
   if (d.type === 'standOffline') v4sim.oos.add(d.target);
   else if (d.type === 'handlerCap') {
-    v4sim.handlerCap[d.target] = d.params.cap;
-    // the reduced crew can only turn `cap` aircraft promptly in the window; the rest slip,
-    // which the ledger picks up as delay. Stand reallocation cannot relieve this (the handler
-    // is fixed per flight), so it appears in both the optimize-off and optimize-on runs.
-    const aff = FEED.filter(x => x.dir === 'arr' && x.handler === d.target && x.predOn >= d.time && x.predOn < d.time + d.duration).sort((a, b) => a.predOn - b.predOn);
-    aff.forEach((x, i) => { if (i >= d.params.cap) x.delayMin = (x.delayMin || 0) + 20; });
+    const cap = d.params.cap;
+    v4sim.handlerCap[d.target] = cap;
+    // Model the reduced crew as `cap` parallel teams serving turnarounds first-come-first-served
+    // by on-block time. When more of this handler's aircraft are on stand at once than there are
+    // teams, the excess wait for a team to free, which extends those turnarounds and slips the
+    // linked departures. This is about simultaneity, not total count: aircraft spread out over the
+    // window queue little; a cluster queues a lot. Stand reallocation cannot relieve it (the handler
+    // is contracted per flight), so the tool flags and prices the delay rather than optimizing it away.
+    const arrs = FEED.filter(x => x.dir === 'arr' && x.handler === d.target
+        && (x.predOn + (x.dwell || 45)) > d.time && x.predOn < d.time + d.duration)
+      .sort((a, b) => a.predOn - b.predOn);
+    const teamFree = new Array(cap).fill(-Infinity);   // earliest moment each team is available
+    arrs.forEach(x => {
+      teamFree.sort((a, b) => a - b);
+      const start = Math.max(x.predOn, teamFree[0]);   // wait until a team frees up
+      const wait = Math.max(0, Math.round(start - x.predOn));
+      teamFree[0] = start + (x.dwell || 45);           // that team is busy through this turnaround
+      if (wait > 0) {
+        x.handlerWait = wait;                          // flagged conflict: crew could not start on time
+        const dep = FEED.find(y => y.id === x.depId);
+        if (dep) { dep.predOn += wait; dep.delayMin = (dep.delayMin || 0) + wait; }
+      }
+    });
   }
   else if (f && d.type === 'earlyArrival') { f.predOn = Math.max(0, f.predOn - d.params.min); }
   else if (f && d.type === 'lateArrival') { f.predOn += d.params.min; f.delayMin = (f.delayMin || 0) + d.params.min; }
@@ -3313,7 +3348,7 @@ function v4ClearDisruptions() {
 }
 function v4DisruptPanel() {
   const el = document.getElementById('feedDisrupt'); if (!el) return;
-  const btn = type => '<button class="disrupt-btn" onclick="v4InjectType(\'' + type + '\')">' + V4_DISRUPT[type].label + '</button>';
+  const btn = type => '<button class="disrupt-btn" title="' + V4_DISRUPT[type].tip + '" onclick="v4InjectType(\'' + type + '\')">' + V4_DISRUPT[type].label + '</button>';
   const order = ['standOffline', 'handlerCap', 'earlyArrival', 'lateArrival', 'depDelay', 'longerTurn'];
   const status = d => d.cleared ? '<span class="ds done">cleared</span>' : d.applied ? '<span class="ds on">active</span>' : '<span class="ds wait">pending</span>';
   const rows = v4sim.disruptions.slice().reverse().map(d =>
@@ -3323,7 +3358,20 @@ function v4DisruptPanel() {
     (v4sim.disruptions.length ? '<button class="btn-ghost" onclick="v4ClearDisruptions()">Clear all</button>' : '') + '</div>' +
     (v4sim.disruptions.length
       ? '<table class="mini"><tr><th>Time</th><th>Disruption</th><th>Target</th><th>Status</th></tr>' + rows + '</table>'
-      : '<p class="hint">No disruptions injected. Inject one at the current feed time; with continuous optimization on, the optimizer reacts on the next cadence. A stand offline forces a reassignment; a handler capacity cut delays the flights the reduced crew cannot service on time, a cost that stand reallocation cannot relieve.</p>');
+      : '<p class="hint">No disruptions injected. Hover a button for what it does, or see the Definitions tab for the full list. Inject one at the current feed time; with continuous optimization on, the optimizer reacts on the next cadence. A stand offline forces a reassignment; a handler capacity cut queues the simultaneous turnarounds the reduced crew cannot start on time and slips their departures, a cost that stand reallocation cannot relieve.</p>');
+}
+
+function v4DefsDisrupt() {
+  const el = document.getElementById('defsDisrupt'); if (!el) return;
+  const order = ['standOffline', 'handlerCap', 'earlyArrival', 'lateArrival', 'depDelay', 'longerTurn'];
+  const mag = type => { const c = V4_DISRUPT[type];
+    if (type === 'standOffline') return c.dur + ' min outage';
+    if (type === 'handlerCap') return c.dur + ' min, crew reduced';
+    if (type === 'earlyArrival') return c.min + ' min earlier';
+    if (type === 'longerTurn') return c.min + ' min longer';
+    return c.min + ' min later'; };
+  el.innerHTML = order.map(type =>
+    '<dt>' + V4_DISRUPT[type].label + ' <span class="f">' + mag(type) + '</span></dt><dd>' + V4_DISRUPT[type].desc + '</dd>').join('');
 }
 
 /* ===== Phase V4.6: realized (incurred) cost ledger =====
@@ -3428,12 +3476,14 @@ function showTab(name) {
   if (name === 'apron') renderApron();          // repointed V3 tabs render at the current feed clock on open
   if (name === 'flights') renderFlights();
   if (name === 'changes') renderChanges();
+  if (name === 'defs') v4DefsDisrupt();
 }
 
 v4RunsLoad();
 render();
 renderConfig();
 v4Controls();   // populate the persistent feed-clock bar on load
+v4DefsDisrupt();   // populate the disruptions legend on load
 </script>
 </body>
 </html>
