@@ -2941,14 +2941,14 @@ async function v4ApplyOptimize() {
 
 const V4_TRADE = [
   { key: 'balanced', label: 'Balanced', w: { passenger: 1, handler: 1, schedule: 1 }, color: '#170d81' },
-  { key: 'passengers', label: 'Protect passengers', w: { passenger: 3, handler: 1, schedule: 1 }, color: '#88a8ed' },
-  { key: 'handlers', label: 'Protect handlers', w: { passenger: 1, handler: 3, schedule: 1 }, color: '#4e55ab' },
-  { key: 'schedule', label: 'Protect schedule', w: { passenger: 1, handler: 1, schedule: 3 }, color: '#e8590c' },
+  { key: 'passengers', label: 'Protect passengers', w: { passenger: 6, handler: 1, schedule: 1 }, color: '#88a8ed' },
+  { key: 'handlers', label: 'Protect handlers', w: { passenger: 1, handler: 12, schedule: 1 }, color: '#4e55ab' },
+  { key: 'schedule', label: 'Protect schedule', w: { passenger: 1, handler: 1, schedule: 6 }, color: '#e8590c' },
 ];
 function allocComponents(alloc) {
   const c = { passenger: 0, handler: 0, schedule: 0, remote: 0, esc: 0 };
   Object.keys(alloc).forEach(id => {
-    const sid = alloc[id]; if (sid === 'ESC' || sid == null) { if (sid === 'ESC') { c.esc++; c.passenger += CONFIG.escalateCost; c.handler += CONFIG.escalateCost; c.schedule += CONFIG.escalateCost; } return; }
+    const sid = alloc[id]; if (sid === 'ESC' || sid == null) { if (sid === 'ESC') c.esc++; return; }   // escalations are a separate axis on the trade-off, not smeared into the three cost components (it would drown the real signal)
     const f = FEED.find(x => x.id === id), s = STANDS.find(x => x.id === sid); if (!f || !s) return;
     const p = v4CostParts(f, s); c.passenger += p.passenger; c.handler += p.handler; c.schedule += p.schedule; if (s.type === 'remote') c.remote++;
   });
@@ -2965,40 +2965,49 @@ async function v4Tradeoffs() {
   } finally { if (btn) { btn.disabled = false; btn.textContent = 'Compare strategies on the current window'; } }
 }
 function renderTradeoffs(results) {
-  const W = 760, H = 320, pl = 64, pb = 46, pt = 16, pr = 150;
+  // Parallel coordinates over the cost objectives. The genuine conflict here is passenger versus
+  // handler (a stand close to the terminal is often far from the handler's base), which a single
+  // passenger-vs-schedule scatter cannot show. Each strategy is a line across the axes; lower is
+  // better, so a line that sits below another on every axis dominates it, and crossing lines are a
+  // real trade-off. Axes are scaled to the range of these four strategies so the shape is visible.
+  const W = 760, H = 330, pl = 56, pr = 150, pt = 30, pb = 52;
+  const axes = [
+    { key: 'passenger', label: 'Passenger' },
+    { key: 'handler', label: 'Handler' },
+    { key: 'schedule', label: 'Schedule' },
+    { key: 'esc', label: 'Escalations' },
+  ];
   const spread = k => Math.max(...results.map(r => r.comp[k])) - Math.min(...results.map(r => r.comp[k]));
-  const degenerate = spread('passenger') < 1 && spread('handler') < 1 && spread('schedule') < 1;
-  const xs = results.map(r => r.comp.passenger), ys = results.map(r => r.comp.schedule);
-  const xmax = Math.max(1, ...xs) * 1.2, ymax = Math.max(1, ...ys) * 1.2;   // headroom so points never sit on the border
-  const sx = v => pl + v / xmax * (W - pl - pr), sy = v => (H - pb) - v / ymax * (H - pb - pt);
+  const degenerate = axes.every(a => spread(a.key) < 1);
+  const innerW = W - pl - pr, innerH = H - pt - pb;
+  const ax = i => pl + (axes.length === 1 ? 0 : i / (axes.length - 1)) * innerW;
+  const ranges = axes.map(a => { const vs = results.map(r => r.comp[a.key]); let lo = Math.min(...vs), hi = Math.max(...vs); if (hi - lo < 1) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; } return { lo, hi }; });
+  const yOf = (i, v) => (pt + innerH) - (v - ranges[i].lo) / (ranges[i].hi - ranges[i].lo) * innerH;   // lowest cost at the bottom
   let svg = '';
-  for (let g = 0; g <= 4; g++) { const yy = pt + g / 4 * (H - pb - pt); svg += '<line x1="' + pl + '" y1="' + yy.toFixed(1) + '" x2="' + (W - pr) + '" y2="' + yy.toFixed(1) + '" stroke="#eef2fa"/>'; }
-  svg += '<line x1="' + pl + '" y1="' + pt + '" x2="' + pl + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/><line x1="' + pl + '" y1="' + (H - pb) + '" x2="' + (W - pr) + '" y2="' + (H - pb) + '" stroke="#c4bfbb"/>';
-  svg += '<text x="' + ((pl + W - pr) / 2) + '" y="' + (H - 8) + '" font-size="11" fill="#6b7299" text-anchor="middle">Passenger cost (walk + connections) &rarr;</text>';
-  svg += '<text x="16" y="' + (H / 2) + '" font-size="11" fill="#6b7299" text-anchor="middle" transform="rotate(-90 16 ' + (H / 2) + ')">Schedule cost (remote + zone) &rarr;</text>';
-  // Points that coincide on the passenger/schedule projection (often because they differ only in
-  // handler cost, or because a slack window has no trade-off) are fanned around the shared spot so
-  // all four strategies stay visible; a dashed ring marks where they actually sit.
-  const pts = results.map(r => ({ r, bx: sx(r.comp.passenger), by: sy(r.comp.schedule) }));
-  pts.forEach(p => { p.x = p.bx; p.y = p.by; });
-  const groups = {};
-  pts.forEach(p => { const k = Math.round(p.bx) + ',' + Math.round(p.by); (groups[k] = groups[k] || []).push(p); });
-  Object.values(groups).forEach(g => {
-    if (g.length > 1) { const R = 13; svg += '<circle cx="' + g[0].bx.toFixed(1) + '" cy="' + g[0].by.toFixed(1) + '" r="18" fill="none" stroke="#c9d2e8" stroke-dasharray="2 2"/>';
-      g.forEach((p, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / g.length; p.x = p.bx + R * Math.cos(a); p.y = p.by + R * Math.sin(a); }); }
+  axes.forEach((a, i) => { const x = ax(i);
+    svg += '<line x1="' + x.toFixed(1) + '" y1="' + pt + '" x2="' + x.toFixed(1) + '" y2="' + (pt + innerH) + '" stroke="#c4bfbb"/>';
+    svg += '<text x="' + x.toFixed(1) + '" y="' + (pt + innerH + 20) + '" font-size="11.5" fill="#1b2350" text-anchor="middle">' + a.label + '</text>';
+    svg += '<text x="' + x.toFixed(1) + '" y="' + (pt - 9) + '" font-size="9.5" fill="#9aa0bf" text-anchor="middle">' + Math.round(ranges[i].hi) + '</text>';
+    svg += '<text x="' + x.toFixed(1) + '" y="' + (pt + innerH + 34) + '" font-size="9.5" fill="#9aa0bf" text-anchor="middle">' + Math.round(ranges[i].lo) + '</text>';
   });
-  pts.forEach(p => { svg += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="7" fill="' + p.r.color + '" stroke="#fff" stroke-width="1.5"/>'; });
-  results.forEach((r, i) => { const ly = pt + 8 + i * 22, lx = W - pr + 12; svg += '<circle cx="' + (lx + 6) + '" cy="' + ly + '" r="6" fill="' + r.color + '"/><text x="' + (lx + 18) + '" y="' + (ly + 4) + '" font-size="11.5" fill="#1b2350">' + r.label + '</text>'; });
+  svg += '<text x="' + (pl - 44) + '" y="' + (pt + 4) + '" font-size="9.5" fill="#6b7299">worse</text>';
+  svg += '<text x="' + (pl - 44) + '" y="' + (pt + innerH) + '" font-size="9.5" fill="#1d6b3a">better</text>';
+  results.forEach(r => {
+    const pts = axes.map((a, i) => ax(i).toFixed(1) + ',' + yOf(i, r.comp[a.key]).toFixed(1)).join(' ');
+    svg += '<polyline points="' + pts + '" fill="none" stroke="' + r.color + '" stroke-width="2.4" opacity="0.92"/>';
+    axes.forEach((a, i) => { svg += '<circle cx="' + ax(i).toFixed(1) + '" cy="' + yOf(i, r.comp[a.key]).toFixed(1) + '" r="4.5" fill="' + r.color + '" stroke="#fff" stroke-width="1"/>'; });
+  });
+  results.forEach((r, i) => { const ly = pt + 8 + i * 22, lx = W - pr + 14; svg += '<line x1="' + lx + '" y1="' + ly + '" x2="' + (lx + 16) + '" y2="' + ly + '" stroke="' + r.color + '" stroke-width="3"/><text x="' + (lx + 22) + '" y="' + (ly + 4) + '" font-size="11.5" fill="#1b2350">' + r.label + '</text>'; });
   const rows = results.map(r => '<tr><td><span class="vc-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + r.color + '"></span> ' + r.label + '</td><td>' + Math.round(r.comp.passenger) + '</td><td>' + Math.round(r.comp.handler) + '</td><td>' + Math.round(r.comp.schedule) + '</td><td>' + r.comp.remote + '</td><td>' + r.comp.esc + '</td></tr>').join('');
   const note = degenerate
-    ? '<div class="callout"><b>No trade-off at this window.</b> With spare stands there is no contention, so every strategy reaches the same allocation and the four points coincide. Inject a disruption, or open a busier window, to make the strategies diverge.</div>'
+    ? '<div class="callout"><b>No trade-off at this window.</b> With spare stands there is no contention, so every strategy reaches the same allocation and the lines coincide. Inject a disruption, or open a busier window, to make the strategies diverge.</div>'
     : '';
   document.getElementById('paretoUI').innerHTML =
     note +
-    '<div class="gantt-box"><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:340px">' + svg + '</svg></div>' +
+    '<div class="gantt-box"><svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-height:350px">' + svg + '</svg></div>' +
     '<div class="opt-moves"><h4>Strategy comparison <span class="band">cost components of each window allocation</span></h4>' +
     '<table class="mini"><tr><th>Strategy</th><th>Passenger</th><th>Handler</th><th>Schedule</th><th>Remotes</th><th>Escalations</th></tr>' + rows + '</table></div>' +
-    '<p class="cap">Each point is the window solved under one strategy, plotted as passenger cost against schedule cost; the handler cost is in the table. Strategies that reach the same passenger and schedule cost share a spot and are fanned around it. Protecting an objective lowers its cost and raises the others; the gap between the points is the trade-off the operator governs. Apply a strategy continuously on the 48h feed.</p>';
+    '<p class="cap">Each line is a strategy across the cost objectives; lower is better. Where lines cross there is a trade-off: the strategy lowest on one objective is higher on another, so none is best on all. A line below another on every axis dominates it. Axes are scaled to the range of these four strategies so the shape is visible; absolute costs are in the table. Apply a strategy continuously on the 48h feed.</p>';
 }
 
 /* ===== U7: digital twin on the feed (scoped) =====
@@ -3146,11 +3155,15 @@ function v4MaybeSolve() {
    mode that re-weights to whichever resource is most stressed in the live window. A cadence
    lock enforces a minimum sim-time dwell between strategy changes (no limit / 30 min / 1 h /
    2 h), so the trade-off cannot thrash. The adaptive mode respects the same cadence. */
+// Weights are magnitude-aware, not symmetric: handler cost is roughly a tenth of passenger cost
+// (a short apron drive, not a terminal walk), so protecting handlers needs a larger multiplier than
+// protecting passengers to actually flip an allocation. These contrasts make the strategies
+// genuinely diverge instead of collapsing onto Balanced.
 const V4_STRATEGIES = {
   balanced:   { label: 'Balanced',          w: { passenger: 1, handler: 1, schedule: 1 } },
-  passengers: { label: 'Protect passengers', w: { passenger: 3, handler: 1, schedule: 1 } },
-  handlers:   { label: 'Protect handlers',   w: { passenger: 1, handler: 3, schedule: 1 } },
-  schedule:   { label: 'Protect schedule',   w: { passenger: 1, handler: 1, schedule: 3 } },
+  passengers: { label: 'Protect passengers', w: { passenger: 6, handler: 1, schedule: 1 } },
+  handlers:   { label: 'Protect handlers',   w: { passenger: 1, handler: 12, schedule: 1 } },
+  schedule:   { label: 'Protect schedule',   w: { passenger: 1, handler: 1, schedule: 6 } },
   adaptive:   { label: 'Adaptive',           w: null },
 };
 const V4_CADENCES = [{ v: 0, label: 'No limit' }, { v: 30, label: '30 min' }, { v: 60, label: '1 h' }, { v: 120, label: '2 h' }];
