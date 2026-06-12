@@ -11,3 +11,9 @@
 
 # Node (none vendored, but guard against accidental installs)
 node_modules/
+
+# CPH brand assets and case materials: kept locally, never committed
+**/CphAirfield-Positive.otf
+**/CPH_Logo_*.png
+Case - AI Business Lead - Operations.pdf
+.DS_Store

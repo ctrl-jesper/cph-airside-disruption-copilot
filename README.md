@@ -4,6 +4,10 @@ A decision-support copilot for airport stand allocation during disruption. It re
 
 Built as a worked solution for an "AI Business Lead, Operations" interview case at Copenhagen Airport (CPH). It runs entirely on synthetic data and is not affiliated with or endorsed by Copenhagen Airports A/S.
 
+> **Status:** this repository is the V1 to V4 build lineage, kept as the working record. It is superseded by [cph-apron-poc-fresh](https://github.com/ctrl-jesper/cph-apron-poc-fresh), a clean rebuild of the same case (HiGHS-WASM solver, digital twin, operator calibration loop) used for the live demo.
+
+> **Brand assets:** Copenhagen Airports' proprietary CPH Airfield typeface and CPH logo images are not distributed in this repository. Pages render with system-font fallbacks and placeholder images in a fresh clone; the layout and all computation are unaffected.
+
 ## The problem
 
 A busy afternoon, a central stand fails, aircraft arrive off-slot, and one ground handler cannot service every turnaround at once. The decisions interact across stands, passport control, baggage, handlers, and passenger connections, so the best choice in one place creates a problem in another, and the consequences are not visible at the moment of decision. Today this is handled manually under time pressure, and the knowledge is person-bound.
@@ -78,4 +82,4 @@ This is an independent worked solution built for an interview case. It uses synt
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT for the code in this repository. See [LICENSE](LICENSE). Copenhagen Airports' brand assets and case materials are excluded from that grant and are not distributed here.
